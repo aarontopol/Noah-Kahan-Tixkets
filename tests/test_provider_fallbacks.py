@@ -90,6 +90,33 @@ def test_ticketmaster_no_fallback_when_seat_data_flows():
     assert not [l for l in listings if l.is_price_level]
 
 
+def test_ticketmaster_details_uses_discovery_id_when_pinned_id_404s():
+    """Pinned website IDs 404 on the Discovery details endpoint (observed in
+    production); the discovery-namespace ID from the search must be used."""
+    provider = TicketmasterProvider("key")
+    provider.http = FakeHttp([
+        ("events.json", FakeResponse({"_embedded": {"events": [
+            {"id": "DISC8", "url": "https://tm/8",
+             "dates": {"start": {"localDate": "2026-08-08"}}},
+            {"id": "DISC9", "url": "https://tm/9",
+             "dates": {"start": {"localDate": "2026-08-09"}}},
+        ]}})),
+        # discovery-namespace IDs resolve on the details endpoint...
+        ("events/DISC8", FakeResponse({"priceRanges": [{"min": 137.0}]})),
+        ("events/DISC9", FakeResponse({"priceRanges": [{"min": 155.5}]})),
+        # ...website IDs would 404 (must not be attempted first)
+        ("events/TM8", FakeResponse({}, status=404)),
+        ("events/TM9", FakeResponse({}, status=404)),
+        ("offeradapter", FakeResponse({}, status=403)),
+    ])
+
+    listings = provider.fetch(config())
+
+    assert {(l.listing_id, l.price_per_ticket) for l in listings} == {
+        ("TM8:price-range", 137.0), ("TM9:price-range", 155.5)}
+    assert all(l.is_price_level for l in listings)
+
+
 def test_seatgeek_emits_price_level_from_stats():
     provider = SeatGeekProvider("client-id")
     provider.http = FakeHttp([

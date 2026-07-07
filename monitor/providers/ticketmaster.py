@@ -114,13 +114,16 @@ class TicketmasterProvider(TicketProvider):
     def _discover_events(self, config) -> List[tuple]:
         """Return (date, event_id, url, min_price) tuples for the target shows."""
         target_dates = {d.isoformat(): d for d in config.dates}
-        # iso -> [event_id, url, min_price]
+        # iso -> [facets_event_id, url, min_price, discovery_event_id]
+        # Ticketmaster uses two ID namespaces: the website/seat-map IDs (what
+        # users pin from event URLs, used by the facets endpoint) and Discovery
+        # API IDs (returned by search, required by the details endpoint).
         found: Dict[str, list] = {}
 
-        # Pinned IDs from config take priority for the event ID.
+        # Pinned IDs from config take priority for the seat-map lookup.
         for iso, ev_id in config.ticketmaster_event_ids.items():
             if ev_id and iso in target_dates:
-                found[iso] = [ev_id, "", None]
+                found[iso] = [ev_id, "", None, ""]
 
         params = {
             "apikey": self.api_key,
@@ -138,28 +141,35 @@ class TicketmasterProvider(TicketProvider):
                     continue
                 matched += 1
                 low = _min_price(ev)
-                if iso in found:  # pinned: keep the pinned ID, enrich url/price
+                disc_id = str(ev.get("id", ""))
+                if iso in found:  # pinned: keep the pinned ID for the seat map
                     found[iso][1] = found[iso][1] or ev.get("url", "")
                     found[iso][2] = low
+                    found[iso][3] = disc_id
                 else:
-                    found[iso] = [str(ev.get("id", "")), ev.get("url", ""), low]
+                    found[iso] = [disc_id, ev.get("url", ""), low, disc_id]
             print(f"[ticketmaster] discovery search matched {matched} target event(s)")
         except Exception as exc:  # noqa: BLE001
             print(f"[ticketmaster] discovery lookup failed: {exc}")
 
         # The keyword search often omits priceRanges; the per-event details
-        # endpoint publishes them more reliably. Fill in any still missing.
+        # endpoint publishes them more reliably. Prefer the Discovery-namespace
+        # ID from the search — website IDs pinned in config 404 on this API.
         for iso, v in found.items():
-            if v[0] and v[2] is None:
-                try:
-                    resp = self.http.get(EVENT_DETAILS_URL.format(event_id=v[0]),
-                                         params={"apikey": self.api_key}, timeout=30)
-                    resp.raise_for_status()
-                    ev = resp.json()
-                    v[1] = v[1] or ev.get("url", "")
-                    v[2] = _min_price(ev)
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[ticketmaster] event details lookup failed for {v[0]}: {exc}")
+            if v[2] is None:
+                for candidate in (v[3], v[0]):
+                    if not candidate:
+                        continue
+                    try:
+                        resp = self.http.get(EVENT_DETAILS_URL.format(event_id=candidate),
+                                             params={"apikey": self.api_key}, timeout=30)
+                        resp.raise_for_status()
+                        ev = resp.json()
+                        v[1] = v[1] or ev.get("url", "")
+                        v[2] = _min_price(ev)
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[ticketmaster] event details lookup failed for {candidate}: {exc}")
             price_note = f"price range from ${v[2]}" if v[2] is not None else "no price range published"
             print(f"[ticketmaster] {iso}: {price_note}")
 
