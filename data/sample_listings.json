@@ -1,0 +1,93 @@
+[
+  {
+    "listing_id": "mk-1",
+    "event_date": "2026-08-08",
+    "section": "128",
+    "row": "12",
+    "quantity": 4,
+    "price_per_ticket": 312.0,
+    "seat_numbers": [5, 6, 7, 8],
+    "split_options": [2, 4],
+    "is_obstructed": false,
+    "notes": "",
+    "url": "https://example.com/listing/mk-1"
+  },
+  {
+    "listing_id": "mk-2",
+    "event_date": "2026-08-08",
+    "section": "120",
+    "row": "3",
+    "quantity": 6,
+    "price_per_ticket": 289.0,
+    "seat_numbers": [1, 2, 3, 4, 5, 6],
+    "split_options": [2, 4, 6],
+    "is_obstructed": false,
+    "notes": "",
+    "url": "https://example.com/listing/mk-2"
+  },
+  {
+    "listing_id": "mk-3-too-expensive",
+    "event_date": "2026-08-09",
+    "section": "141",
+    "row": "8",
+    "quantity": 4,
+    "price_per_ticket": 415.0,
+    "seat_numbers": [10, 11, 12, 13],
+    "split_options": [4],
+    "is_obstructed": false,
+    "notes": "",
+    "url": "https://example.com/listing/mk-3"
+  },
+  {
+    "listing_id": "mk-4-obstructed",
+    "event_date": "2026-08-08",
+    "section": "133",
+    "row": "1",
+    "quantity": 4,
+    "price_per_ticket": 250.0,
+    "seat_numbers": [1, 2, 3, 4],
+    "split_options": [4],
+    "is_obstructed": true,
+    "notes": "Limited view - behind stage rigging",
+    "url": "https://example.com/listing/mk-4"
+  },
+  {
+    "listing_id": "mk-5-wrong-section",
+    "event_date": "2026-08-08",
+    "section": "308",
+    "row": "5",
+    "quantity": 4,
+    "price_per_ticket": 120.0,
+    "seat_numbers": [1, 2, 3, 4],
+    "split_options": [4],
+    "is_obstructed": false,
+    "notes": "",
+    "url": "https://example.com/listing/mk-5"
+  },
+  {
+    "listing_id": "mk-6-only-two",
+    "event_date": "2026-08-09",
+    "section": "125",
+    "row": "9",
+    "quantity": 2,
+    "price_per_ticket": 200.0,
+    "seat_numbers": [7, 8],
+    "split_options": [2],
+    "is_obstructed": false,
+    "notes": "",
+    "url": "https://example.com/listing/mk-6"
+  },
+  {
+    "listing_id": "mk-7-not-contiguous",
+    "event_date": "2026-08-09",
+    "section": "137",
+    "row": "4",
+    "quantity": 4,
+    "price_per_ticket": 305.0,
+    "seat_numbers": [2, 4, 9, 11],
+    "split_options": [4],
+    "is_obstructed": false,
+    "notes": "singles scattered across the row",
+    "url": "https://example.com/listing/mk-7"
+  }
+]

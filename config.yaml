@@ -1,0 +1,55 @@
+# =============================================================================
+# Noah Kahan ticket monitor — search criteria
+# =============================================================================
+# Edit these values to change what the agent looks for. Secrets (API keys,
+# your phone number, TextBelt key) are NOT stored here — they come from
+# environment variables / GitHub Actions secrets. See README.md.
+# =============================================================================
+
+event:
+  artist: "Noah Kahan"
+  # Human-readable tour/venue, used for matching + the text message body.
+  venue: "Coors Field"
+  city: "Denver"
+  # The two shows you care about. Add/remove ISO dates (YYYY-MM-DD) freely.
+  dates:
+    - "2026-08-08"
+    - "2026-08-09"
+  # Known primary-market (Ticketmaster) event IDs, when available. Providers
+  # that can search by artist+date will still work if these are blank.
+  ticketmaster_event_ids:
+    "2026-08-08": "1E00643B33EFC5AD"
+    "2026-08-09": "1E0064497CB928E0"
+
+criteria:
+  # Lower bowl at Coors Field = 100-level. You want sections 120 through 141.
+  section_min: 120
+  section_max: 141
+  # Number of seats that must be together.
+  min_quantity: 4
+  # Require the seats to be contiguous (next to each other). When a source
+  # exposes seat numbers we verify a run of `min_quantity` consecutive seats;
+  # otherwise we treat a single listing block as an adjacent group.
+  require_contiguous: true
+  # Alert only when the PER-TICKET price is at or below this. Change the number
+  # to raise/lower your threshold. Starting point: $350/ticket.
+  max_price_per_ticket: 350.0
+  # Interpret prices as all-in (incl. fees) when the source provides it.
+  prefer_all_in_price: true
+  # Skip anything with an obstructed / limited / partial view.
+  exclude_obstructed: true
+
+providers:
+  # Turn sources on/off. Each real source needs its own API key in the
+  # environment (see README). `mock` is for local testing / demos.
+  mock: false
+  seatgeek: true
+  ticketmaster: true
+  stubhub: false   # requires StubHub partner API approval — off by default
+
+runtime:
+  # Poll interval for --loop mode (minutes). GitHub Actions cron uses its own
+  # schedule and ignores this.
+  poll_interval_minutes: 15
+  # Max matches to include in a single text message.
+  max_matches_in_text: 6
