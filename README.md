@@ -59,6 +59,46 @@ scheduled GitHub Action picks up your changes.
 
 ---
 
+## Host the UI on Vercel (access it from your phone, anywhere)
+
+The repo also ships a **hosted variant** of the UI (`hosted/` + `api/index.py` +
+`vercel.json`) designed for Vercel's free tier. Instead of a local file, it
+reads and **commits `watches.json` straight to this GitHub repo** — every save
+is a commit the cloud monitor picks up on its next cycle. It's protected by a
+single access code you choose (the page asks once and your phone remembers it).
+
+### Deploy (one-time, ~10 minutes)
+
+1. **Create a GitHub token** the UI will use to commit:
+   GitHub → Settings → Developer settings → **Fine-grained personal access
+   tokens** → Generate new token. Repository access: **only this repo**.
+   Permissions: **Contents: Read and write**, **Actions: Read and write**.
+   Copy the token.
+2. Go to [vercel.com](https://vercel.com) → **Sign up with GitHub** → **Add New
+   → Project** → import `Noah-Kahan-Tixkets`. Leave build settings as-is.
+3. Before deploying, add **Environment Variables**:
+
+   | Name | Value |
+   | --- | --- |
+   | `UI_PASSWORD` | an access code you'll type on your phone (required) |
+   | `GITHUB_TOKEN` | the fine-grained token from step 1 |
+   | `GITHUB_REPO` | `aarontopol/Noah-Kahan-Tixkets` |
+   | `TEXTBELT_KEY` / `ALERT_PHONE` | optional — enables the test-text button |
+   | `TICKETMASTER_API_KEY` | optional — enables event search |
+
+4. Click **Deploy**. Your UI is live at `https://<project>.vercel.app` —
+   bookmark it on your phone's home screen.
+
+The hosted UI can add/edit/delete events, change prices and sections, toggle
+sources and the poll interval, send a test text, and kick off an immediate
+cloud check ("Run a check now" → dispatches the GitHub Action and opens the
+logs). Its commits are marked `[skip ci]` and show up in your repo history.
+
+> Note: the monitoring itself still runs on GitHub Actions — Vercel only hosts
+> the control panel, so nothing breaks if Vercel is briefly unreachable.
+
+---
+
 ## Quick start (run once locally)
 
 ```bash
