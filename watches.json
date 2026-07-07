@@ -10,7 +10,7 @@
       ],
       "ticketmaster_event_ids": {
         "2026-08-08": "1E00643B33EFC5AD",
-        "2026-08-09": ""
+        "2026-08-09": "1E0064497CB928E0"
       },
       "section_min": 120,
       "section_max": 141,
@@ -23,7 +23,8 @@
       "created_at": "2026-07-07T00:00:00+00:00",
       "last_checked": null,
       "last_match_count": 0,
-      "last_error": ""
+      "last_error": "",
+      "last_sources": {}
     }
   ],
   "providers": {

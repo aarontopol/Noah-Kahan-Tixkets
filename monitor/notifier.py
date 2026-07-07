@@ -13,6 +13,27 @@ import requests
 from .models import Listing
 
 TEXTBELT_URL = "https://textbelt.com/text"
+TEXTBELT_QUOTA_URL = "https://textbelt.com/quota/{key}"
+
+TEST_MESSAGE = ("✅ Ticket monitor test: texting works! You'll get alerts at this "
+                "number when tickets matching your criteria are found.")
+
+
+def check_quota(api_key: str, timeout: int = 10):
+    """Return the remaining TextBelt quota for this key, or None if unknown."""
+    if not api_key:
+        return None
+    try:
+        resp = requests.get(TEXTBELT_QUOTA_URL.format(key=api_key), timeout=timeout)
+        payload = resp.json()
+    except (requests.RequestException, ValueError):
+        return None
+    if not payload.get("success"):
+        return None
+    try:
+        return int(payload.get("quotaRemaining"))
+    except (TypeError, ValueError):
+        return None
 
 
 def build_message(matches: List[Listing], max_matches: int, buy_hint: str = "") -> str:

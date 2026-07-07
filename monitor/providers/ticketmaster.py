@@ -26,8 +26,14 @@ from .http import session
 
 DISCOVERY_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
 FACETS_URL = "https://offeradapter.ticketmaster.com/api/ismds/event/{event_id}/facets"
-# Ticketmaster's public web consumer key (the same one their site uses).
-WEB_CONSUMER_KEY = "b462oi7fic6pehcdkzony5bxhe"
+# Ticketmaster's public web consumer key (the same one their site uses). This
+# can rotate/get blocked; override without a code change via TM_WEB_CONSUMER_KEY.
+DEFAULT_WEB_CONSUMER_KEY = "b462oi7fic6pehcdkzony5bxhe"
+
+
+def _web_consumer_key() -> str:
+    import os
+    return os.getenv("TM_WEB_CONSUMER_KEY", "") or DEFAULT_WEB_CONSUMER_KEY
 
 
 def search_events(api_key: str, keyword: str, city: str = "", size: int = 20) -> List[dict]:
@@ -76,7 +82,10 @@ class TicketmasterProvider(TicketProvider):
             try:
                 listings.extend(self._fetch_facets(ev_id, config, ev_date, ev_url))
             except Exception as exc:  # noqa: BLE001 - seat-map is best-effort
-                print(f"[ticketmaster] facets unavailable for {ev_id} ({ev_date}): {exc}")
+                print(f"[ticketmaster] facets unavailable for {ev_id} ({ev_date}): {exc}\n"
+                      f"[ticketmaster]   the seat-map endpoint is unofficial and may be blocked/rotated; "
+                      f"if this persists, grab the current apikey from ticketmaster.com's network tab "
+                      f"and set it as TM_WEB_CONSUMER_KEY")
         return listings
 
     # -- stage 1: discovery ---------------------------------------------------
@@ -114,7 +123,7 @@ class TicketmasterProvider(TicketProvider):
     # -- stage 2: seat-map facets --------------------------------------------
     def _fetch_facets(self, event_id: str, config, ev_date, ev_url) -> List[Listing]:
         params = {
-            "apikey": WEB_CONSUMER_KEY,
+            "apikey": _web_consumer_key(),
             "by": "section",
             "show": "places",
             "mode": "primary:default",

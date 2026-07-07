@@ -130,9 +130,15 @@
       <div><label>Poll interval (minutes)</label><input id="poll" type="number" /></div>
       <div><label>Max listings per text</label><input id="maxmatch" type="number" /></div>
     </div>
-    <div class="row" style="margin-top:12px"><button id="saveSettings" class="secondary">Save settings</button></div>
+    <div class="row" style="margin-top:12px">
+      <button id="saveSettings" class="secondary">Save settings</button>
+      <button id="testSms" class="ghost">Send test text</button>
+      <span class="muted" id="quota"></span>
+    </div>
     <p class="muted" style="margin-top:10px">Secrets (TextBelt key, phone, API keys) come from the
-      environment / GitHub Actions secrets — not editable here for safety.</p>
+      environment / GitHub Actions secrets — not editable here for safety.
+      The poll interval also controls the cloud schedule: the GitHub Action wakes every
+      5 minutes but only checks when this interval has elapsed.</p>
   </section>
 </main>
 
@@ -179,6 +185,10 @@ function watchCard(w){
     ? `Last checked ${w.last_checked.replace('T',' ').replace('+00:00',' UTC')} · ${w.last_match_count} match(es)`
     : "Not checked yet";
   const err = w.last_error ? `<span class="pill" style="color:var(--danger)">error: ${w.last_error}</span>` : "";
+  // data-health: how many listings each source returned on the last check
+  const srcs = Object.entries(w.last_sources || {}).map(([name, n]) =>
+    `<span class="pill" ${n < 0 ? 'style="color:var(--danger)"' : (n === 0 ? 'style="color:var(--warn)"' : '')}>` +
+    `${name}: ${n < 0 ? 'error' : n + ' listings'}</span>`).join("");
   el.innerHTML = `
     <div class="row" style="justify-content:space-between">
       <div><div class="title">${w.artist}</div>
@@ -204,6 +214,7 @@ function watchCard(w){
       <button class="danger" data-act="delete">Delete</button>
       <span class="status">${status} ${err}</span>
     </div>
+    <div class="status" style="margin-top:6px">${srcs}</div>
     <div class="matches" style="display:none"></div>`;
 
   const collect = () => {
@@ -296,6 +307,23 @@ $("searchBtn").onclick = async () => {
   } catch(err){ res.innerHTML = `<span class="muted" style="color:var(--danger)">${err.message}</span>`; }
 };
 
+// -- test SMS + quota ----------------------------------------------------------
+$("testSms").onclick = async (e) => {
+  e.target.disabled = true; e.target.textContent = "Sending…";
+  try {
+    const r = await api("POST", "/api/test-sms");
+    toast(`Test text sent to ${r.phone}` + (r.quota != null ? ` · ${r.quota} texts left` : ""));
+    if (r.quota != null) $("quota").textContent = `TextBelt credit: ${r.quota} texts`;
+  } catch(err){ toast(err.message, true); }
+  e.target.disabled = false; e.target.textContent = "Send test text";
+};
+async function loadQuota(){
+  try {
+    const r = await api("GET", "/api/quota");
+    if (r.quota != null) $("quota").textContent = `TextBelt credit: ${r.quota} texts`;
+  } catch(e){ /* quota is best-effort */ }
+}
+
 // -- settings ----------------------------------------------------------------
 $("saveSettings").onclick = async () => {
   const providers = {};
@@ -308,6 +336,7 @@ $("saveSettings").onclick = async () => {
 };
 
 load().catch(err => toast(err.message, true));
+loadQuota();
 </script>
 </body>
 </html>

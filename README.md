@@ -46,7 +46,10 @@ From the UI you can:
 - ⏯️ **Enable/disable** events and **Delete** ones you no longer care about.
 - 🧪 **Check now** to preview which listings currently match (a dry run — no text
   sent).
-- ⚙️ Toggle which ticket **sources** to use and the poll interval.
+- ⚙️ Toggle which ticket **sources** to use and the poll interval (which also
+  drives how often the cloud runs check).
+- 📲 **Send a test text** to confirm SMS wiring, with your remaining TextBelt
+  credit shown alongside.
 
 ![web UI](docs/ui.png)
 
@@ -91,10 +94,28 @@ credentials as encrypted secrets.
    | `TICKETMASTER_API_KEY` | recommended | free at https://developer.ticketmaster.com |
    | `SEATGEEK_CLIENT_ID` | optional | free at https://platform.seatgeek.com |
    | `STUBHUB_TOKEN` | optional | https://developer.stubhub.com (partner approval) |
+   | `TM_WEB_CONSUMER_KEY` | optional | only if the seat-map stage reports it's blocked — copy the `apikey` ticketmaster.com sends in its own seat-map request (browser dev tools → Network tab) |
 
-3. Open the **Actions** tab, pick **Noah Kahan ticket monitor**, and click
-   **Run workflow** (tick “dry run” the first time to test wiring). After that
-   it runs automatically on the schedule and checks your whole watchlist.
+3. **Verify texting works**: Actions tab → **Noah Kahan ticket monitor** →
+   **Run workflow** → tick **"Just send a test text"**. Your phone should buzz
+   within a minute.
+4. **Verify ticket data**: run it again with **"dry run"** ticked and read the
+   run's logs — you'll see what each source returned for each event.
+5. Done — it now runs automatically on the schedule and checks your whole
+   watchlist.
+
+### How the schedule works
+
+The workflow wakes every ~5 minutes, but only actually checks when the
+**poll interval** you set in the web UI (default 15 min) has elapsed — so you
+can speed up to 5-minute checks the week of the show by changing one number in
+the UI, no workflow edits needed.
+
+After each meaningful run, the workflow **commits status back** to
+`watches.json` (match counts, per-source listing counts, errors) — so when you
+pull and open the web UI, you see exactly what the cloud runs are seeing.
+Timestamp-only changes are skipped to keep git history clean. Run
+`git pull` before editing the watchlist locally to avoid conflicts.
 
 ## Changing what it looks for
 
@@ -136,6 +157,18 @@ source, then applies your filters. Honest notes on each:
 | **StubHub** | partner token | Richest seat-level data (section, row, seat numbers, obstructed flag) — but requires approved developer access. Off by default. |
 | **mock** | none | Sample data in `data/sample_listings.json` for testing/demo. |
 
+> **Note for The Great Divide Tour specifically:** Noah Kahan is using
+> Ticketmaster's **Face Value Exchange** — tickets are non-transferable and can
+> only be resold *on Ticketmaster at face value*. That's great news for your
+> price target (no scalper markup), but it means secondary markets (StubHub,
+> SeatGeek) will have little or no inventory for these shows. **Ticketmaster is
+> the source that matters here**, and seats reappear on it whenever fans return
+> them at face value.
+
+Each event card in the web UI shows **per-source health** after every check
+(e.g. `ticketmaster: 14 listings · seatgeek: 0 listings`) so you can see at a
+glance whether a source is actually returning data or erroring.
+
 Two honest caveats baked into the design:
 
 - **Contiguity:** when a source exposes seat numbers we verify a run of 4
@@ -167,6 +200,7 @@ webui/
   __main__.py        `python -m webui` launcher
   templates/index.html   single-page UI
 watches.json         your monitored events (edited by the UI)
+scripts/status_changed.py   lets the workflow commit meaningful status back
 data/sample_listings.json   demo data for the mock provider
 tests/               pytest suite (filters, state, notifier, watchlist, web API, e2e)
 .github/workflows/monitor.yml   scheduled cloud runner

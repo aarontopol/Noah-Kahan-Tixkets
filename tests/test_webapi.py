@@ -87,3 +87,22 @@ def test_search_without_key(client):
     data = client.get("/api/search?q=Noah").get_json()
     assert data["results"] == []
     assert "TICKETMASTER_API_KEY" in data["error"]
+
+
+def test_test_sms_requires_secrets(client, monkeypatch):
+    monkeypatch.delenv("TEXTBELT_KEY", raising=False)
+    monkeypatch.delenv("ALERT_PHONE", raising=False)
+    resp = client.post("/api/test-sms")
+    assert resp.status_code == 400
+    assert "TEXTBELT_KEY" in resp.get_json()["error"]
+
+
+def test_quota_without_key_is_null(client, monkeypatch):
+    monkeypatch.delenv("TEXTBELT_KEY", raising=False)
+    assert client.get("/api/quota").get_json() == {"quota": None}
+
+
+def test_check_now_exposes_source_health(client):
+    client.post("/api/watches/nk/check", json={"dry_run": True})
+    watch = client.get("/api/watches").get_json()["watches"][0]
+    assert watch["last_sources"] == {"mock": 7}

@@ -13,6 +13,7 @@ from flask import Flask, jsonify, render_template, request
 
 from monitor.agent import check_watch
 from monitor.config import Secrets
+from monitor.notifier import TEST_MESSAGE, TextBeltNotifier, check_quota
 from monitor.providers.ticketmaster import search_events
 from monitor.watch import EDITABLE_FIELDS, Watch, WatchStore
 
@@ -109,6 +110,23 @@ def create_app(store_path: str = "watches.json", state_dir: str = "state") -> Fl
                     st.runtime[key] = int(payload["runtime"][key])
         st.save()
         return jsonify({"providers": st.providers, "runtime": st.runtime})
+
+    # -- SMS wiring: test text + remaining quota ------------------------------
+    @app.post("/api/test-sms")
+    def test_sms():
+        s = Secrets.from_env()
+        if not s.textbelt_key or not s.alert_phone:
+            return jsonify({"error": "TEXTBELT_KEY and ALERT_PHONE must be set in the environment"}), 400
+        ok = TextBeltNotifier(s.textbelt_key, s.alert_phone).send(TEST_MESSAGE)
+        if not ok:
+            return jsonify({"error": "TextBelt rejected the send — check the key/credits"}), 502
+        return jsonify({"ok": True, "phone": s.alert_phone, "quota": check_quota(s.textbelt_key)})
+
+    @app.get("/api/quota")
+    def quota():
+        # Separate endpoint (not part of /api/watches) so the page load never
+        # blocks on a network call to TextBelt.
+        return jsonify({"quota": check_quota(Secrets.from_env().textbelt_key)})
 
     # -- event search (to pick new concerts) ---------------------------------
     @app.get("/api/search")

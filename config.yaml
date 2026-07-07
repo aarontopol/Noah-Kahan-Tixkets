@@ -19,7 +19,7 @@ event:
   # that can search by artist+date will still work if these are blank.
   ticketmaster_event_ids:
     "2026-08-08": "1E00643B33EFC5AD"
-    "2026-08-09": ""   # fill in if you find it; providers can also search by date
+    "2026-08-09": "1E0064497CB928E0"
 
 criteria:
   # Lower bowl at Coors Field = 100-level. You want sections 120 through 141.

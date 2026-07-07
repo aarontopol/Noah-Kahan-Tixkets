@@ -58,6 +58,9 @@ class Watch:
     last_checked: Optional[str] = None
     last_match_count: int = 0
     last_error: str = ""
+    # per-source listing counts from the last check (-1 = source errored);
+    # lets the UI show whether each source is actually returning data.
+    last_sources: Dict[str, int] = field(default_factory=dict)
 
     # -- conversions used by the agent ---------------------------------------
     def date_objects(self) -> List[date]:

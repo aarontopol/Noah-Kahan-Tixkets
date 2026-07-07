@@ -1,20 +1,29 @@
 name: Noah Kahan ticket monitor
 
 # Runs in the cloud on a schedule so you don't need to keep a machine on.
-# GitHub cron is UTC and best-effort (it can lag a few minutes under load).
+# The cron fires every ~5 minutes (GitHub cron is UTC and best-effort), but the
+# monitor only actually checks when `poll_interval_minutes` (set in the web UI /
+# watches.json) has elapsed — so you control the cadence without editing this file.
 on:
   schedule:
-    - cron: "*/15 * * * *"   # every ~15 minutes
-  workflow_dispatch:          # lets you trigger a run by hand from the Actions tab
+    - cron: "*/5 * * * *"
+  workflow_dispatch:          # trigger a run by hand from the Actions tab
     inputs:
       dry_run:
         description: "Print the text instead of sending it"
+        type: boolean
+        default: false
+      test_sms:
+        description: "Just send a test text to verify SMS wiring"
         type: boolean
         default: false
 
 concurrency:
   group: ticket-monitor
   cancel-in-progress: false
+
+permissions:
+  contents: write   # needed to commit run status back to watches.json
 
 jobs:
   check:
@@ -31,10 +40,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Restore the dedupe state saved by the previous run so you aren't
-      # texted repeatedly about the same seats.
+      # Restore the dedupe + throttle state saved by the previous run so you
+      # aren't texted repeatedly about the same seats.
       - name: Restore state
-        id: restore-state
         uses: actions/cache/restore@v4
         with:
           path: state
@@ -42,16 +50,48 @@ jobs:
           restore-keys: |
             ticket-state-
 
+      - name: Send test SMS
+        if: github.event_name == 'workflow_dispatch' && inputs.test_sms
+        env:
+          TEXTBELT_KEY: ${{ secrets.TEXTBELT_KEY }}
+          ALERT_PHONE: ${{ secrets.ALERT_PHONE }}
+        run: python -m monitor --test-sms
+
       - name: Run monitor
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.test_sms) }}
         env:
           TEXTBELT_KEY: ${{ secrets.TEXTBELT_KEY }}
           ALERT_PHONE: ${{ secrets.ALERT_PHONE }}
           SEATGEEK_CLIENT_ID: ${{ secrets.SEATGEEK_CLIENT_ID }}
           TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
           STUBHUB_TOKEN: ${{ secrets.STUBHUB_TOKEN }}
-          MAX_PRICE_PER_TICKET: ${{ vars.MAX_PRICE_PER_TICKET }}
+          TM_WEB_CONSUMER_KEY: ${{ secrets.TM_WEB_CONSUMER_KEY }}
+        # Scheduled runs respect poll_interval_minutes; manual runs always check.
         run: |
-          python -m monitor ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+          FLAGS=""
+          if [ "${{ github.event_name }}" = "schedule" ]; then FLAGS="--respect-interval"; fi
+          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
+          python -m monitor $FLAGS
+
+      # Push run status (match counts, per-source health, errors) back to the
+      # repo so the web UI shows what the cloud runs are seeing. Timestamp-only
+      # changes are skipped to keep history clean.
+      - name: Commit status back
+        if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.test_sms || inputs.dry_run)) }}
+        run: |
+          if python scripts/status_changed.py; then
+            git config user.name "ticket-monitor[bot]"
+            git config user.email "ticket-monitor[bot]@users.noreply.github.com"
+            git add watches.json
+            git commit -m "Update watchlist status [skip ci]"
+            git pull --rebase origin "${{ github.ref_name }}" || true
+            for i in 1 2 3 4; do
+              git push origin "HEAD:${{ github.ref_name }}" && break || sleep $((2**i))
+            done
+          else
+            git checkout -- watches.json || true
+            echo "No meaningful status change; nothing committed."
+          fi
 
       # Save the updated state under a run-unique key (cache entries are
       # immutable, so each run writes a fresh key that the next run restores).

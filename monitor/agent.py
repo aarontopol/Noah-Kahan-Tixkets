@@ -22,6 +22,8 @@ class RunResult:
     matched: int
     notified: int
     matches: List[Listing]
+    # listings fetched per source this run; -1 means the source errored.
+    source_counts: dict = None
 
 
 def run_once(
@@ -37,13 +39,16 @@ def run_once(
 
     # 1. Gather listings from all sources; one bad source never kills the run.
     all_listings: List[Listing] = []
+    source_counts: dict = {}
     for provider in providers:
         try:
             found = provider.fetch(config)
             print(f"[agent] {provider.name}: {len(found)} listing(s)")
             all_listings.extend(found)
+            source_counts[provider.name] = len(found)
         except Exception as exc:  # noqa: BLE001 - isolate provider failures
             print(f"[agent] {provider.name} failed: {exc}")
+            source_counts[provider.name] = -1  # -1 = errored this run
 
     # 2. Apply the search criteria.
     matches = find_matches(all_listings, config.criteria)
@@ -69,7 +74,8 @@ def run_once(
     else:
         print("[agent] nothing new to alert (all matches already texted at this price or lower)")
 
-    return RunResult(fetched=len(all_listings), matched=len(matches), notified=notified, matches=matches)
+    return RunResult(fetched=len(all_listings), matched=len(matches), notified=notified,
+                     matches=matches, source_counts=source_counts)
 
 
 def run_loop(config: Config, state_path: str, dry_run: bool = False) -> None:
@@ -81,6 +87,30 @@ def run_loop(config: Config, state_path: str, dry_run: bool = False) -> None:
         except Exception as exc:  # noqa: BLE001 - keep the loop alive
             print(f"[agent] run error: {exc}")
         time.sleep(interval)
+
+
+# --- scheduling throttle ------------------------------------------------------
+# GitHub cron fires more often than you may want to check; these helpers let the
+# run respect poll_interval_minutes (editable in the web UI) instead.
+_LAST_RUN_FILE = "last_run.txt"
+_CRON_JITTER_SECONDS = 90  # GitHub cron is best-effort; allow runs a bit early
+
+
+def interval_elapsed(state_dir: str, interval_minutes: int, now: Optional[float] = None) -> bool:
+    """True if at least interval_minutes (minus jitter) passed since the last run."""
+    now = time.time() if now is None else now
+    try:
+        with open(os.path.join(state_dir, _LAST_RUN_FILE), "r", encoding="utf-8") as fh:
+            last = float(fh.read().strip())
+    except (OSError, ValueError):
+        return True  # no record -> run
+    return (now - last) >= max(0, interval_minutes * 60 - _CRON_JITTER_SECONDS)
+
+
+def record_run_time(state_dir: str, now: Optional[float] = None) -> None:
+    os.makedirs(state_dir, exist_ok=True)
+    with open(os.path.join(state_dir, _LAST_RUN_FILE), "w", encoding="utf-8") as fh:
+        fh.write(str(time.time() if now is None else now))
 
 
 # --- watchlist mode (multiple events managed via the web UI) -----------------
@@ -123,6 +153,7 @@ def check_watch(
         raise
     watch.last_checked = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     watch.last_match_count = result.matched
+    watch.last_sources = result.source_counts or {}
     return result
 
 
