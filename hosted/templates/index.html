@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ticket Monitor</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --panel2: #1f232c; --line: #2a2f3a;
+    --text: #e8eaf0; --muted: #9aa3b2; --accent: #7c5cff; --accent2: #00d1b2;
+    --danger: #ff5c7a; --ok: #35d07f; --warn: #ffb020; --radius: 12px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f5f8; --panel:#fff; --panel2:#f0f1f5; --line:#e2e5ec;
+            --text:#1a1d24; --muted:#5b6472; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); line-height: 1.45; }
+  a { color: var(--accent2); }
+  header { padding: 18px 16px; border-bottom: 1px solid var(--line);
+           display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; }
+  header h1 { font-size: 19px; margin:0; }
+  header h1 span { color: var(--accent); }
+  .badges { display:flex; gap:6px; flex-wrap:wrap; }
+  .badge { font-size:11px; padding:3px 8px; border-radius:999px; border:1px solid var(--line);
+           background: var(--panel2); color: var(--muted); }
+  .badge.on { color: var(--ok); border-color: var(--ok); }
+  .badge.off { color: var(--warn); border-color: var(--warn); }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  .panel { background: var(--panel); border:1px solid var(--line); border-radius: var(--radius);
+           padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing:.05em;
+              color: var(--muted); }
+  label { display:block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input, textarea, select {
+    width:100%; background: var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius: 8px; padding: 10px; font-size: 16px; font-family: inherit; }
+  textarea { resize: vertical; min-height: 48px; }
+  .grid { display:grid; gap: 10px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 640px){ .g3,.g4 { grid-template-columns: 1fr 1fr; } }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button { cursor:pointer; border:none; border-radius:8px; padding:10px 14px; font-size:15px;
+           font-weight:600; background: var(--accent); color:#fff; }
+  button.secondary { background: var(--panel2); color: var(--text); border:1px solid var(--line); }
+  button.ghost { background: transparent; color: var(--muted); border:1px solid var(--line); }
+  button.danger { background: transparent; color: var(--danger); border:1px solid var(--danger); }
+  button:disabled { opacity:.5; cursor: default; }
+  .check { display:flex; align-items:center; gap:8px; }
+  .check input { width:auto; }
+  .watch { border:1px solid var(--line); border-radius: var(--radius); padding:14px; margin-bottom:12px;
+           background: var(--panel2); }
+  .watch.disabled { opacity:.6; }
+  .watch .title { font-size:16px; font-weight:700; margin-bottom:2px; }
+  .watch .sub { color: var(--muted); font-size:13px; margin-bottom:10px; }
+  .watch .status { font-size:12px; color: var(--muted); margin-top:8px; }
+  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px;
+          background: var(--panel); border:1px solid var(--line); margin-right:6px; margin-top:4px; }
+  .result { display:flex; justify-content:space-between; gap:10px; align-items:center;
+            padding:10px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; background:var(--panel2);}
+  .muted { color: var(--muted); font-size: 13px; }
+  .toast { position: fixed; bottom: 18px; left:50%; transform: translateX(-50%);
+           background: var(--panel); border:1px solid var(--line); padding:10px 16px; border-radius:10px;
+           font-size:14px; box-shadow: 0 6px 24px rgba(0,0,0,.35); opacity:0; transition:.2s; max-width:92vw; }
+  .toast.show { opacity:1; }
+  .toast.err { border-color: var(--danger); color: var(--danger); }
+  details summary { cursor:pointer; color: var(--muted); font-size:13px; }
+  #lock { max-width:420px; margin:12vh auto; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎫 <span>Ticket</span> Monitor</h1>
+  <div class="badges" id="badges"></div>
+</header>
+
+<!-- ACCESS CODE GATE -->
+<div id="lock" class="panel" style="display:none">
+  <h2>Access code</h2>
+  <p class="muted">Enter the access code you configured (UI_PASSWORD) to manage the watchlist.</p>
+  <input id="pw" type="password" placeholder="Access code" autocomplete="current-password" />
+  <div class="row" style="margin-top:12px; justify-content:center">
+    <button id="unlock">Unlock</button>
+  </div>
+</div>
+
+<main id="app" style="display:none">
+  <!-- ADD AN EVENT -->
+  <section class="panel">
+    <h2>Add an event to monitor</h2>
+    <div class="grid g3" style="align-items:end">
+      <div style="grid-column: span 2"><label>Search Ticketmaster (artist or event)</label>
+        <input id="q" placeholder="e.g. Noah Kahan" /></div>
+      <div class="row">
+        <input id="qcity" placeholder="City (optional)" style="flex:1" />
+        <button id="searchBtn">Search</button>
+      </div>
+    </div>
+    <div id="results" style="margin-top:12px"></div>
+
+    <details style="margin-top:12px">
+      <summary>…or add manually</summary>
+      <div class="grid g3" style="margin-top:12px">
+        <div><label>Artist / event *</label><input id="m_artist" placeholder="Noah Kahan" /></div>
+        <div><label>Venue</label><input id="m_venue" placeholder="Coors Field" /></div>
+        <div><label>City</label><input id="m_city" placeholder="Denver" /></div>
+      </div>
+      <div class="grid g4" style="margin-top:12px">
+        <div style="grid-column: span 2"><label>Date(s) — one per line (YYYY-MM-DD) *</label>
+          <textarea id="m_dates" placeholder="2026-08-08&#10;2026-08-09"></textarea></div>
+        <div><label>Section min</label><input id="m_smin" type="number" value="120" /></div>
+        <div><label>Section max</label><input id="m_smax" type="number" value="141" /></div>
+      </div>
+      <div class="grid g4" style="margin-top:12px; align-items:end">
+        <div><label>Seats together</label><input id="m_qty" type="number" value="4" /></div>
+        <div><label>Max $/ticket</label><input id="m_price" type="number" value="350" /></div>
+        <div class="check"><input id="m_contig" type="checkbox" checked /><label style="margin:0">Contiguous</label></div>
+        <div class="check"><input id="m_obstr" type="checkbox" checked /><label style="margin:0">No obstructed</label></div>
+      </div>
+      <div class="row" style="margin-top:12px"><button id="addBtn">Add to watchlist</button></div>
+    </details>
+  </section>
+
+  <!-- WATCHLIST -->
+  <section class="panel">
+    <h2>Monitored events (<span id="count">0</span>)</h2>
+    <div id="watches"></div>
+    <div class="row" style="margin-top:8px">
+      <button id="checkNow" class="secondary">Run a check now</button>
+      <a id="actionsLink" class="muted" target="_blank" rel="noopener">view run logs ↗</a>
+    </div>
+    <p class="muted" style="margin-top:8px">Saving here commits to GitHub; the cloud monitor picks
+      up changes on its next cycle. Status stamps refresh after each cloud run.</p>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel">
+    <h2>Settings</h2>
+    <label>Ticket sources</label>
+    <div class="row" id="providers" style="margin-bottom:12px"></div>
+    <div class="grid g2">
+      <div><label>Poll interval (minutes)</label><input id="poll" type="number" /></div>
+      <div><label>Max listings per text</label><input id="maxmatch" type="number" /></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="saveSettings" class="secondary">Save settings</button>
+      <button id="testSms" class="ghost">Send test text</button>
+      <span class="muted" id="quota"></span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="logout" class="ghost">Forget access code on this device</button>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let STATE = { watches: [], providers: {}, runtime: {}, secrets_status: {}, repo: "" };
+
+function toast(msg, isErr){
+  const t = $("toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err":"");
+  setTimeout(()=> t.className = "toast", 3200);
+}
+function uiKey(){ return localStorage.getItem("ui_key") || ""; }
+function showLock(){ $("lock").style.display = "block"; $("app").style.display = "none"; }
+function showApp(){ $("lock").style.display = "none"; $("app").style.display = "block"; }
+
+async function api(method, url, body){
+  const opt = { method, headers: {"Content-Type":"application/json", "X-UI-Key": uiKey()} };
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch(url, opt);
+  const data = await r.json().catch(()=> ({}));
+  if (r.status === 401) { localStorage.removeItem("ui_key"); showLock(); throw new Error("wrong access code"); }
+  if (!r.ok) throw new Error(data.error || ("HTTP "+r.status));
+  return data;
+}
+
+function renderBadges(){
+  const s = STATE.secrets_status || {};
+  const items = [["SMS", s.textbelt], ["Ticketmaster", s.ticketmaster], ["SeatGeek", s.seatgeek]];
+  $("badges").innerHTML = items.map(([n,on]) =>
+    `<span class="badge ${on?'on':'off'}">${n}: ${on?'ready':'n/a here'}</span>`).join("");
+}
+
+function renderProviders(){
+  $("providers").innerHTML = Object.entries(STATE.providers).map(([k,v]) =>
+    `<label class="check"><input type="checkbox" data-prov="${k}" ${v?'checked':''}/> ${k}</label>`).join("");
+  $("poll").value = STATE.runtime.poll_interval_minutes ?? 15;
+  $("maxmatch").value = STATE.runtime.max_matches_in_text ?? 6;
+  $("actionsLink").href = `https://github.com/${STATE.repo}/actions`;
+}
+
+function watchCard(w){
+  const el = document.createElement("div");
+  el.className = "watch" + (w.enabled ? "" : " disabled");
+  const status = w.last_checked
+    ? `Last cloud check ${String(w.last_checked).replace('T',' ').replace('+00:00',' UTC')} · ${w.last_match_count||0} match(es)`
+    : "Not checked yet";
+  const err = w.last_error ? `<span class="pill" style="color:var(--danger)">error: ${w.last_error}</span>` : "";
+  const srcs = Object.entries(w.last_sources || {}).map(([name, n]) =>
+    `<span class="pill" ${n < 0 ? 'style="color:var(--danger)"' : (n === 0 ? 'style="color:var(--warn)"' : '')}>` +
+    `${name}: ${n < 0 ? 'error' : n + ' listings'}</span>`).join("");
+  el.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <div><div class="title">${w.artist}</div>
+        <div class="sub">${[w.venue, w.city].filter(Boolean).join(" · ")} — ${(w.dates||[]).join(", ")}</div></div>
+      <label class="check"><input type="checkbox" data-f="enabled" ${w.enabled?'checked':''}/> Enabled</label>
+    </div>
+    <div class="grid g4">
+      <div><label>Section min</label><input type="number" data-f="section_min" value="${w.section_min}"/></div>
+      <div><label>Section max</label><input type="number" data-f="section_max" value="${w.section_max}"/></div>
+      <div><label>Seats together</label><input type="number" data-f="min_quantity" value="${w.min_quantity}"/></div>
+      <div><label>Max $/ticket</label><input type="number" data-f="max_price_per_ticket" value="${w.max_price_per_ticket}"/></div>
+    </div>
+    <div class="grid g2" style="margin-top:10px">
+      <div><label>Dates (one per line)</label><textarea data-f="dates">${(w.dates||[]).join("\n")}</textarea></div>
+      <div class="row" style="align-items:center">
+        <label class="check"><input type="checkbox" data-f="require_contiguous" ${w.require_contiguous?'checked':''}/> Contiguous</label>
+        <label class="check"><input type="checkbox" data-f="exclude_obstructed" ${w.exclude_obstructed?'checked':''}/> No obstructed</label>
+        <label class="check" title="Alert on the event's official lowest price when seat data is unavailable">
+          <input type="checkbox" data-f="price_range_fallback" ${w.price_range_fallback!==false?'checked':''}/> Price fallback</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button data-act="save">Save changes</button>
+      <button class="danger" data-act="delete">Delete</button>
+      <span class="status">${status} ${err}</span>
+    </div>
+    <div class="status" style="margin-top:4px">${srcs}</div>`;
+
+  const collect = () => {
+    const o = {};
+    el.querySelectorAll("[data-f]").forEach(inp => {
+      const f = inp.dataset.f;
+      if (inp.type === "checkbox") o[f] = inp.checked;
+      else if (f === "dates") o[f] = inp.value.split("\n").map(s=>s.trim()).filter(Boolean);
+      else o[f] = inp.value;
+    });
+    return o;
+  };
+  el.querySelector('[data-act="save"]').onclick = async (e) => {
+    e.target.disabled = true;
+    try { await api("PUT", `/api/watches/${w.id}`, collect()); toast("Saved & committed to GitHub"); await load(); }
+    catch(err){ toast(err.message, true); e.target.disabled=false; }
+  };
+  el.querySelector('[data-act="delete"]').onclick = async () => {
+    if (!confirm(`Stop monitoring ${w.artist}?`)) return;
+    try { await api("DELETE", `/api/watches/${w.id}`); toast("Removed"); await load(); }
+    catch(err){ toast(err.message, true); }
+  };
+  return el;
+}
+
+function renderWatches(){
+  const c = $("watches"); c.innerHTML = "";
+  $("count").textContent = STATE.watches.length;
+  if (!STATE.watches.length){ c.innerHTML = `<p class="muted">Nothing yet — search or add an event above.</p>`; return; }
+  STATE.watches.forEach(w => c.appendChild(watchCard(w)));
+}
+
+async function load(){
+  STATE = await api("GET", "/api/watches");
+  renderBadges(); renderProviders(); renderWatches(); showApp();
+}
+
+// -- access code ---------------------------------------------------------------
+$("unlock").onclick = async () => {
+  localStorage.setItem("ui_key", $("pw").value.trim());
+  try { await load(); toast("Unlocked"); loadQuota(); }
+  catch(err){ toast(err.message, true); }
+};
+$("pw").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
+$("logout").onclick = () => { localStorage.removeItem("ui_key"); showLock(); };
+
+// -- add event -------------------------------------------------------------------
+$("addBtn").onclick = async () => {
+  const body = {
+    artist: $("m_artist").value, venue: $("m_venue").value, city: $("m_city").value,
+    dates: $("m_dates").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    section_min: $("m_smin").value, section_max: $("m_smax").value,
+    min_quantity: $("m_qty").value, max_price_per_ticket: $("m_price").value,
+    require_contiguous: $("m_contig").checked, exclude_obstructed: $("m_obstr").checked,
+  };
+  try { await api("POST", "/api/watches", body); toast("Added & committed"); $("m_artist").value=""; $("m_dates").value=""; await load(); }
+  catch(err){ toast(err.message, true); }
+};
+
+// -- search -----------------------------------------------------------------------
+$("searchBtn").onclick = async () => {
+  const q = $("q").value.trim(); if (!q) return;
+  const res = $("results"); res.innerHTML = `<span class="muted">Searching…</span>`;
+  try {
+    const data = await api("GET", `/api/search?q=${encodeURIComponent(q)}&city=${encodeURIComponent($("qcity").value.trim())}`);
+    if (data.error) res.innerHTML = `<span class="muted">${data.error}</span>`;
+    else if (!data.results.length) res.innerHTML = `<span class="muted">No events found.</span>`;
+    else res.innerHTML = "";
+    (data.results||[]).forEach(ev => {
+      const row = document.createElement("div"); row.className="result";
+      row.innerHTML = `<div><b>${ev.name}</b><div class="muted">${[ev.venue,ev.city].filter(Boolean).join(" · ")} — ${ev.date||'date TBD'}</div></div>`;
+      const b = document.createElement("button"); b.textContent="Monitor";
+      b.onclick = async () => {
+        try {
+          await api("POST", "/api/watches", {
+            artist: ev.name.split(":")[0].trim() || ev.name, venue: ev.venue, city: ev.city,
+            dates: ev.date ? [ev.date] : [],
+            ticketmaster_event_ids: ev.date && ev.event_id ? {[ev.date]: ev.event_id} : {},
+          });
+          toast("Added — tweak price/sections below"); await load();
+        } catch(err){ toast(err.message, true); }
+      };
+      row.appendChild(b); res.appendChild(row);
+    });
+  } catch(err){ res.innerHTML = `<span class="muted" style="color:var(--danger)">${err.message}</span>`; }
+};
+
+// -- check now ----------------------------------------------------------------------
+$("checkNow").onclick = async (e) => {
+  e.target.disabled = true; e.target.textContent = "Starting…";
+  try {
+    const r = await api("POST", "/api/check-now", {dry_run: false});
+    toast("Cloud check started — results in the run logs in ~1 min");
+    window.open(r.actions_url, "_blank");
+  } catch(err){ toast(err.message, true); }
+  e.target.disabled = false; e.target.textContent = "Run a check now";
+};
+
+// -- test SMS + quota ------------------------------------------------------------------
+$("testSms").onclick = async (e) => {
+  e.target.disabled = true; e.target.textContent = "Sending…";
+  try {
+    const r = await api("POST", "/api/test-sms");
+    toast(`Test text sent to ${r.phone}` + (r.quota != null ? ` · ${r.quota} texts left` : ""));
+  } catch(err){ toast(err.message, true); }
+  e.target.disabled = false; e.target.textContent = "Send test text";
+};
+async function loadQuota(){
+  try {
+    const r = await api("GET", "/api/quota");
+    if (r.quota != null) $("quota").textContent = `TextBelt credit: ${r.quota} texts`;
+  } catch(e){ /* best-effort */ }
+}
+
+// -- settings ------------------------------------------------------------------------
+$("saveSettings").onclick = async () => {
+  const providers = {};
+  document.querySelectorAll("[data-prov]").forEach(c => providers[c.dataset.prov] = c.checked);
+  try {
+    await api("PUT", "/api/settings", { providers,
+      runtime: { poll_interval_minutes: $("poll").value, max_matches_in_text: $("maxmatch").value } });
+    toast("Settings saved & committed"); await load();
+  } catch(err){ toast(err.message, true); }
+};
+
+// -- boot --------------------------------------------------------------------------------
+(async () => {
+  if (!uiKey()) { showLock(); return; }
+  try { await load(); loadQuota(); } catch(err){ showLock(); }
+})();
+</script>
+</body>
+</html>

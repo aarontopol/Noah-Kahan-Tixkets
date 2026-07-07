@@ -1,2 +1,5 @@
 requests>=2.31
 PyYAML>=6.0
+# Flask serves both the local web UI and the Vercel-hosted UI (Vercel installs
+# from this root requirements.txt).
+Flask>=3.0
