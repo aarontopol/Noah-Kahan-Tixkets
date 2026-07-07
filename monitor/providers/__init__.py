@@ -19,7 +19,7 @@ def build_providers(config) -> List[TicketProvider]:
     if "mock" in enabled:
         candidates.append(MockProvider(venue=config.venue, artist=config.artist))
     if "seatgeek" in enabled:
-        candidates.append(SeatGeekProvider(secrets.seatgeek_client_id))
+        candidates.append(SeatGeekProvider(secrets.seatgeek_client_id, secrets.seatgeek_client_secret))
     if "ticketmaster" in enabled:
         candidates.append(TicketmasterProvider(secrets.ticketmaster_api_key))
     if "stubhub" in enabled:

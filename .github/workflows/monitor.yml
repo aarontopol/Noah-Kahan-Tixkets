@@ -63,6 +63,7 @@ jobs:
           TEXTBELT_KEY: ${{ secrets.TEXTBELT_KEY }}
           ALERT_PHONE: ${{ secrets.ALERT_PHONE }}
           SEATGEEK_CLIENT_ID: ${{ secrets.SEATGEEK_CLIENT_ID }}
+          SEATGEEK_CLIENT_SECRET: ${{ secrets.SEATGEEK_CLIENT_SECRET }}
           TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
           STUBHUB_TOKEN: ${{ secrets.STUBHUB_TOKEN }}
           TM_WEB_CONSUMER_KEY: ${{ secrets.TM_WEB_CONSUMER_KEY }}
