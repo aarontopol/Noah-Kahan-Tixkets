@@ -59,6 +59,24 @@ class SeatGeekProvider(TicketProvider):
                 low = (ev.get("stats") or {}).get("lowest_price")
                 print(f"[seatgeek] {ev_date} lowest listed price=${low} "
                       f"(event-level only; no seat detail on this key)")
+                # Public keys don't get per-seat listings, but the lowest listed
+                # price is still an official, useful signal — surface it as a
+                # clearly-labeled price-level result (see monitor/filters.py).
+                if low is not None:
+                    listings.append(Listing(
+                        source="seatgeek",
+                        event_id=ev_id,
+                        event_name=config.artist,
+                        event_date=ev_date,
+                        venue=venue,
+                        section="",
+                        quantity=0,
+                        price_per_ticket=float(low),
+                        notes="lowest listed price on SeatGeek (any section)",
+                        url=ev_url,
+                        listing_id=f"{ev_id}:price-range",
+                        is_price_level=True,
+                    ))
         return listings
 
 
