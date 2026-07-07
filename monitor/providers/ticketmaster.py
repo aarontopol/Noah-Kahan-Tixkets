@@ -25,6 +25,7 @@ from .base import TicketProvider
 from .http import session
 
 DISCOVERY_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
+EVENT_DETAILS_URL = "https://app.ticketmaster.com/discovery/v2/events/{event_id}.json"
 FACETS_URL = "https://offeradapter.ticketmaster.com/api/ismds/event/{event_id}/facets"
 # Ticketmaster's public web consumer key (the same one their site uses). This
 # can rotate/get blocked; override without a code change via TM_WEB_CONSUMER_KEY.
@@ -130,20 +131,37 @@ class TicketmasterProvider(TicketProvider):
         try:
             resp = self.http.get(DISCOVERY_URL, params=params, timeout=30)
             resp.raise_for_status()
+            matched = 0
             for ev in (resp.json().get("_embedded", {}) or {}).get("events", []):
                 iso = (ev.get("dates", {}).get("start", {}) or {}).get("localDate", "")
                 if iso not in target_dates:
                     continue
+                matched += 1
                 low = _min_price(ev)
-                if low is not None:
-                    print(f"[ticketmaster] {iso} price range from ${low}")
                 if iso in found:  # pinned: keep the pinned ID, enrich url/price
                     found[iso][1] = found[iso][1] or ev.get("url", "")
                     found[iso][2] = low
                 else:
                     found[iso] = [str(ev.get("id", "")), ev.get("url", ""), low]
+            print(f"[ticketmaster] discovery search matched {matched} target event(s)")
         except Exception as exc:  # noqa: BLE001
             print(f"[ticketmaster] discovery lookup failed: {exc}")
+
+        # The keyword search often omits priceRanges; the per-event details
+        # endpoint publishes them more reliably. Fill in any still missing.
+        for iso, v in found.items():
+            if v[0] and v[2] is None:
+                try:
+                    resp = self.http.get(EVENT_DETAILS_URL.format(event_id=v[0]),
+                                         params={"apikey": self.api_key}, timeout=30)
+                    resp.raise_for_status()
+                    ev = resp.json()
+                    v[1] = v[1] or ev.get("url", "")
+                    v[2] = _min_price(ev)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[ticketmaster] event details lookup failed for {v[0]}: {exc}")
+            price_note = f"price range from ${v[2]}" if v[2] is not None else "no price range published"
+            print(f"[ticketmaster] {iso}: {price_note}")
 
         return [(target_dates[iso], v[0], v[1], v[2]) for iso, v in found.items() if v[0]]
 
