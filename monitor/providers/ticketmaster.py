@@ -30,6 +30,35 @@ FACETS_URL = "https://offeradapter.ticketmaster.com/api/ismds/event/{event_id}/f
 WEB_CONSUMER_KEY = "b462oi7fic6pehcdkzony5bxhe"
 
 
+def search_events(api_key: str, keyword: str, city: str = "", size: int = 20) -> List[dict]:
+    """Search Ticketmaster's Discovery API for events to add to the watchlist.
+
+    Returns lightweight candidates: {name, date, venue, city, event_id, url}.
+    Used by the web UI's "search for an event" box. Requires a (free) API key;
+    with none, the UI falls back to manual entry.
+    """
+    if not api_key:
+        return []
+    params = {"apikey": api_key, "keyword": keyword, "size": size, "classificationName": "music"}
+    if city:
+        params["city"] = city
+    resp = session().get(DISCOVERY_URL, params=params, timeout=30)
+    resp.raise_for_status()
+    results = []
+    for ev in (resp.json().get("_embedded", {}) or {}).get("events", []):
+        venues = (ev.get("_embedded", {}) or {}).get("venues", []) or [{}]
+        venue = venues[0] if venues else {}
+        results.append({
+            "name": ev.get("name", ""),
+            "date": (ev.get("dates", {}).get("start", {}) or {}).get("localDate", ""),
+            "venue": venue.get("name", ""),
+            "city": (venue.get("city", {}) or {}).get("name", ""),
+            "event_id": str(ev.get("id", "")),
+            "url": ev.get("url", ""),
+        })
+    return results
+
+
 class TicketmasterProvider(TicketProvider):
     name = "ticketmaster"
 

@@ -1,0 +1,39 @@
+{
+  "watches": [
+    {
+      "artist": "Noah Kahan",
+      "venue": "Coors Field",
+      "city": "Denver",
+      "dates": [
+        "2026-08-08",
+        "2026-08-09"
+      ],
+      "ticketmaster_event_ids": {
+        "2026-08-08": "1E00643B33EFC5AD",
+        "2026-08-09": ""
+      },
+      "section_min": 120,
+      "section_max": 141,
+      "min_quantity": 4,
+      "max_price_per_ticket": 350.0,
+      "require_contiguous": true,
+      "exclude_obstructed": true,
+      "enabled": true,
+      "id": "noahkahan",
+      "created_at": "2026-07-07T00:00:00+00:00",
+      "last_checked": null,
+      "last_match_count": 0,
+      "last_error": ""
+    }
+  ],
+  "providers": {
+    "mock": false,
+    "seatgeek": true,
+    "ticketmaster": true,
+    "stubhub": false
+  },
+  "runtime": {
+    "poll_interval_minutes": 15,
+    "max_matches_in_text": 6
+  }
+}

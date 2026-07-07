@@ -24,6 +24,36 @@ https://…link-to-cheapest-listing…
 It remembers what it already told you, so you only get pinged for **new**
 listings or when a price **drops** further.
 
+You can monitor **as many events as you like** — the Noah Kahan shows are just
+the starting point. A built-in **web UI** lets you add concerts, edit prices and
+seat sections, and turn events on/off without touching any files.
+
+---
+
+## Manage events with the web UI
+
+```bash
+pip install -r requirements.txt -r requirements-web.txt
+python -m webui                     # → http://127.0.0.1:5000
+```
+
+From the UI you can:
+
+- 🔎 **Search for a concert** (Ticketmaster) and click **Monitor this**, or add
+  one manually (artist, venue, city, dates).
+- ✏️ **Edit price, section range, seat count**, and the contiguous / no-obstructed
+  rules per event — changes save straight to `watches.json`.
+- ⏯️ **Enable/disable** events and **Delete** ones you no longer care about.
+- 🧪 **Check now** to preview which listings currently match (a dry run — no text
+  sent).
+- ⚙️ Toggle which ticket **sources** to use and the poll interval.
+
+![web UI](docs/ui.png)
+
+Everything the UI edits lives in [`watches.json`](./watches.json), which the
+agent reads. Edit events in the UI locally, then `git commit` + `git push` so the
+scheduled GitHub Action picks up your changes.
+
 ---
 
 ## Quick start (run once locally)
@@ -35,12 +65,13 @@ set -a && . ./.env && set +a  # load .env into the environment
 python -m monitor --dry-run   # prints the text instead of sending it
 ```
 
-Drop `--dry-run` to actually send SMS, or add `--loop` to keep polling on the
-interval in `config.yaml`.
+This checks **every event in your watchlist** (`watches.json`). Drop `--dry-run`
+to actually send SMS, or add `--loop` to keep polling.
 
 ```bash
-python -m monitor             # one real check
-python -m monitor --loop      # poll every 15 min (see config.yaml)
+python -m monitor             # check the whole watchlist once
+python -m monitor --loop      # poll on the configured interval
+python -m monitor --config config.yaml   # legacy single-event mode
 ```
 
 ## Recommended: run it in the cloud on a schedule (GitHub Actions)
@@ -61,29 +92,37 @@ credentials as encrypted secrets.
    | `SEATGEEK_CLIENT_ID` | optional | free at https://platform.seatgeek.com |
    | `STUBHUB_TOKEN` | optional | https://developer.stubhub.com (partner approval) |
 
-   (Optional) add a **Variable** `MAX_PRICE_PER_TICKET` to override the price
-   without editing `config.yaml`.
 3. Open the **Actions** tab, pick **Noah Kahan ticket monitor**, and click
    **Run workflow** (tick “dry run” the first time to test wiring). After that
-   it runs automatically on the schedule.
+   it runs automatically on the schedule and checks your whole watchlist.
 
 ## Changing what it looks for
 
-Everything except secrets lives in [`config.yaml`](./config.yaml):
+The easiest way is the **web UI** (above) — edit price, sections, seats, and
+dates per event with live "check now" feedback.
 
-```yaml
-criteria:
-  section_min: 120          # lower-bowl range
-  section_max: 141
-  min_quantity: 4           # seats together
-  max_price_per_ticket: 350 # <-- your alert threshold
-  require_contiguous: true
-  exclude_obstructed: true
+Under the hood every event and its criteria live in
+[`watches.json`](./watches.json), which you can also edit by hand:
+
+```json
+{
+  "watches": [
+    {
+      "artist": "Noah Kahan", "venue": "Coors Field", "city": "Denver",
+      "dates": ["2026-08-08", "2026-08-09"],
+      "section_min": 120, "section_max": 141,
+      "min_quantity": 4, "max_price_per_ticket": 350,
+      "require_contiguous": true, "exclude_obstructed": true, "enabled": true
+    }
+  ],
+  "providers": { "seatgeek": true, "ticketmaster": true, "stubhub": false },
+  "runtime": { "poll_interval_minutes": 15, "max_matches_in_text": 6 }
+}
 ```
 
-Change the number under `max_price_per_ticket` to raise/lower your threshold,
-adjust the section range, or edit the `dates` list. Commit and push; the next
-scheduled run uses the new values.
+Commit and push after editing; the next scheduled run uses the new values.
+(The legacy single-event `config.yaml` + `python -m monitor --config config.yaml`
+path still works if you prefer it.)
 
 ## How the sources work (and their limits)
 
@@ -114,16 +153,22 @@ stops the others.
 
 ```
 monitor/
-  __main__.py        CLI (run once / --loop / --dry-run)
-  agent.py           orchestrate: fetch → filter → dedupe → text
+  __main__.py        CLI (watchlist run / --loop / --dry-run / --config)
+  agent.py           orchestrate: fetch → filter → dedupe → text (single + watchlist)
+  watch.py           multi-event watchlist model + JSON store
   config.py          load config.yaml + env secrets
   models.py          Listing data model
   filters.py         the matching rules (section/price/contiguous/obstructed)
   state.py           dedupe store (don't re-text the same seats)
   notifier.py        TextBelt SMS
   providers/         seatgeek, ticketmaster, stubhub, mock
+webui/
+  app.py             Flask JSON API (watches CRUD, check-now, search, settings)
+  __main__.py        `python -m webui` launcher
+  templates/index.html   single-page UI
+watches.json         your monitored events (edited by the UI)
 data/sample_listings.json   demo data for the mock provider
-tests/               pytest suite (filters, state, notifier, end-to-end)
+tests/               pytest suite (filters, state, notifier, watchlist, web API, e2e)
 .github/workflows/monitor.yml   scheduled cloud runner
 ```
 
