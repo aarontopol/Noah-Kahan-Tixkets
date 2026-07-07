@@ -35,6 +35,10 @@ class Listing:
     notes: str = ""
     url: str = ""
     listing_id: str = ""
+    # True for event-level price info (no section/seat detail) used as a
+    # fallback when seat-map data is unavailable. Matched on date+price only
+    # and labeled honestly in the alert text.
+    is_price_level: bool = False
 
     @property
     def section_number(self) -> Optional[int]:
@@ -50,6 +54,11 @@ class Listing:
 
     def summary(self) -> str:
         """One-line human-readable description used in the text message."""
+        if self.is_price_level:
+            return (
+                f"{self.event_date:%b %-d}: tickets from ${self.price_per_ticket:,.0f} "
+                f"— lowest listed price, seat details unavailable ({self.source})"
+            )
         row = f" Row {self.row}" if self.row else ""
         price = f"${self.price_per_ticket:,.0f}/ea"
         return (

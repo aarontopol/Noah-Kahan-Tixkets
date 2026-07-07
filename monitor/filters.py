@@ -26,6 +26,9 @@ class Criteria:
     max_price_per_ticket: float
     require_contiguous: bool = True
     exclude_obstructed: bool = True
+    # Accept event-level "tickets from $X" info when seat-level data is
+    # unavailable (matched on date+price only, labeled clearly in the text).
+    allow_price_fallback: bool = True
 
     def section_in_range(self, section_number: Optional[int]) -> bool:
         return section_number is not None and self.section_min <= section_number <= self.section_max
@@ -73,6 +76,14 @@ def match(listing: Listing, criteria: Criteria) -> Tuple[bool, str]:
     """Return (matches, reason). `reason` explains the first failed check."""
     if criteria.dates and listing.event_date not in criteria.dates:
         return False, f"date {listing.event_date} not in target dates"
+    # Event-level price info has no section/seat detail: match on price alone
+    # (date already checked) so the user still hears about a price under target.
+    if listing.is_price_level:
+        if not criteria.allow_price_fallback:
+            return False, "price-level fallback disabled"
+        if listing.price_per_ticket > criteria.max_price_per_ticket:
+            return False, f"price ${listing.price_per_ticket:.0f} > ${criteria.max_price_per_ticket:.0f}"
+        return True, "price-level match (no seat detail)"
     if not criteria.section_in_range(listing.section_number):
         return False, f"section {listing.section!r} outside {criteria.section_min}-{criteria.section_max}"
     if listing.price_per_ticket > criteria.max_price_per_ticket:

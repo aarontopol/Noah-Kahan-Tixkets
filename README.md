@@ -165,6 +165,16 @@ source, then applies your filters. Honest notes on each:
 > the source that matters here**, and seats reappear on it whenever fans return
 > them at face value.
 
+**If seat-level data is blocked:** Ticketmaster sometimes 403s the seat-map
+endpoint for cloud IPs. When that happens the monitor automatically falls back
+to the **official Discovery API price range** and still texts you when the
+event's lowest listed price crosses your target — the message says
+"seat details unavailable" so you know to check the seat map yourself.
+Toggle this per event with the **Price fallback** checkbox in the UI. You can
+also try setting a `TM_WEB_CONSUMER_KEY` secret (copy the `apikey` from
+ticketmaster.com's own seat-map request in your browser's network tab) to
+restore full per-section data.
+
 Each event card in the web UI shows **per-source health** after every check
 (e.g. `ticketmaster: 14 listings · seatgeek: 0 listings`) so you can see at a
 glance whether a source is actually returning data or erroring.

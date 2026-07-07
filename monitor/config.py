@@ -67,6 +67,7 @@ class Config:
             max_price_per_ticket=float(cr.get("max_price_per_ticket", 350.0)),
             require_contiguous=bool(cr.get("require_contiguous", True)),
             exclude_obstructed=bool(cr.get("exclude_obstructed", True)),
+            allow_price_fallback=bool(cr.get("price_range_fallback", True)),
         )
         enabled = [name for name, on in pr.items() if on]
 

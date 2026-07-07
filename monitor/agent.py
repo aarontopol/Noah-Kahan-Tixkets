@@ -165,6 +165,9 @@ def run_watchlist(
     """Check every enabled watch in the store, reusing one set of providers."""
     store = WatchStore(store_path)
     secrets = Secrets.from_env()
+    # Ensure the state dir exists even when nothing gets written this run, so
+    # the Actions cache step never warns about a missing path.
+    os.makedirs(state_dir, exist_ok=True)
     enabled = [w for w in store.list() if w.enabled]
     if not enabled:
         print("[agent] watchlist is empty (nothing enabled) — add events in the web UI")

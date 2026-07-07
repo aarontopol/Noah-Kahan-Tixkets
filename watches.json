@@ -18,6 +18,7 @@
       "max_price_per_ticket": 350.0,
       "require_contiguous": true,
       "exclude_obstructed": true,
+      "price_range_fallback": true,
       "enabled": true,
       "id": "noahkahan",
       "created_at": "2026-07-07T00:00:00+00:00",
