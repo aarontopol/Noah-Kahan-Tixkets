@@ -1,0 +1,63 @@
+name: Noah Kahan ticket monitor
+
+# Runs in the cloud on a schedule so you don't need to keep a machine on.
+# GitHub cron is UTC and best-effort (it can lag a few minutes under load).
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every ~15 minutes
+  workflow_dispatch:          # lets you trigger a run by hand from the Actions tab
+    inputs:
+      dry_run:
+        description: "Print the text instead of sending it"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ticket-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Restore the dedupe state saved by the previous run so you aren't
+      # texted repeatedly about the same seats.
+      - name: Restore state
+        id: restore-state
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: ticket-state-${{ github.run_id }}
+          restore-keys: |
+            ticket-state-
+
+      - name: Run monitor
+        env:
+          TEXTBELT_KEY: ${{ secrets.TEXTBELT_KEY }}
+          ALERT_PHONE: ${{ secrets.ALERT_PHONE }}
+          SEATGEEK_CLIENT_ID: ${{ secrets.SEATGEEK_CLIENT_ID }}
+          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+          STUBHUB_TOKEN: ${{ secrets.STUBHUB_TOKEN }}
+          MAX_PRICE_PER_TICKET: ${{ vars.MAX_PRICE_PER_TICKET }}
+        run: |
+          python -m monitor ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+
+      # Save the updated state under a run-unique key (cache entries are
+      # immutable, so each run writes a fresh key that the next run restores).
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: ticket-state-${{ github.run_id }}
