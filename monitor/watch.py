@@ -22,7 +22,7 @@ DEFAULT_RUNTIME = {"poll_interval_minutes": 15, "max_matches_in_text": 6}
 EDITABLE_FIELDS = {
     "artist", "venue", "city", "dates", "ticketmaster_event_ids",
     "section_min", "section_max", "min_quantity", "max_price_per_ticket",
-    "require_contiguous", "exclude_obstructed", "enabled",
+    "require_contiguous", "exclude_obstructed", "price_range_fallback", "enabled",
 }
 
 
@@ -52,6 +52,9 @@ class Watch:
     max_price_per_ticket: float = 350.0
     require_contiguous: bool = True
     exclude_obstructed: bool = True
+    # When seat-level data is unavailable (e.g. seat-map endpoint blocked),
+    # still alert on the event's official lowest listed price.
+    price_range_fallback: bool = True
     enabled: bool = True
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     created_at: str = field(default_factory=_now_iso)
@@ -75,6 +78,7 @@ class Watch:
             max_price_per_ticket=float(self.max_price_per_ticket),
             require_contiguous=bool(self.require_contiguous),
             exclude_obstructed=bool(self.exclude_obstructed),
+            allow_price_fallback=bool(self.price_range_fallback),
         )
 
     def label(self) -> str:

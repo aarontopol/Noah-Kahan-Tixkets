@@ -78,26 +78,48 @@ class TicketmasterProvider(TicketProvider):
     def fetch(self, config) -> List[Listing]:
         events = self._discover_events(config)
         listings: List[Listing] = []
-        for ev_date, ev_id, ev_url in events:
+        for ev_date, ev_id, ev_url, min_price in events:
+            seat_listings: List[Listing] = []
             try:
-                listings.extend(self._fetch_facets(ev_id, config, ev_date, ev_url))
+                seat_listings = self._fetch_facets(ev_id, config, ev_date, ev_url)
             except Exception as exc:  # noqa: BLE001 - seat-map is best-effort
                 print(f"[ticketmaster] facets unavailable for {ev_id} ({ev_date}): {exc}\n"
                       f"[ticketmaster]   the seat-map endpoint is unofficial and may be blocked/rotated; "
                       f"if this persists, grab the current apikey from ticketmaster.com's network tab "
                       f"and set it as TM_WEB_CONSUMER_KEY")
+            listings.extend(seat_listings)
+            # Fallback: no seat-level data for this event, but the official
+            # Discovery API told us its lowest listed price — surface that as a
+            # clearly-labeled price-level result so alerts still work.
+            if not seat_listings and min_price is not None:
+                print(f"[ticketmaster] {ev_date}: falling back to official price range (from ${min_price})")
+                listings.append(Listing(
+                    source="ticketmaster",
+                    event_id=ev_id,
+                    event_name=config.artist,
+                    event_date=ev_date,
+                    venue=config.venue,
+                    section="",
+                    quantity=0,
+                    price_per_ticket=float(min_price),
+                    notes="official price range (lowest listed price, any section)",
+                    url=ev_url,
+                    listing_id=f"{ev_id}:price-range",
+                    is_price_level=True,
+                ))
         return listings
 
     # -- stage 1: discovery ---------------------------------------------------
     def _discover_events(self, config) -> List[tuple]:
-        """Return (date, event_id, url) tuples for the target shows."""
-        found: Dict[str, tuple] = {}
+        """Return (date, event_id, url, min_price) tuples for the target shows."""
         target_dates = {d.isoformat(): d for d in config.dates}
+        # iso -> [event_id, url, min_price]
+        found: Dict[str, list] = {}
 
-        # Pinned IDs from config take priority.
+        # Pinned IDs from config take priority for the event ID.
         for iso, ev_id in config.ticketmaster_event_ids.items():
             if ev_id and iso in target_dates:
-                found[iso] = (target_dates[iso], ev_id, "")
+                found[iso] = [ev_id, "", None]
 
         params = {
             "apikey": self.api_key,
@@ -110,15 +132,20 @@ class TicketmasterProvider(TicketProvider):
             resp.raise_for_status()
             for ev in (resp.json().get("_embedded", {}) or {}).get("events", []):
                 iso = (ev.get("dates", {}).get("start", {}) or {}).get("localDate", "")
-                if iso in target_dates and iso not in found:
-                    low = _min_price(ev)
-                    if low is not None:
-                        print(f"[ticketmaster] {iso} price range from ${low}")
-                    found[iso] = (target_dates[iso], str(ev.get("id", "")), ev.get("url", ""))
+                if iso not in target_dates:
+                    continue
+                low = _min_price(ev)
+                if low is not None:
+                    print(f"[ticketmaster] {iso} price range from ${low}")
+                if iso in found:  # pinned: keep the pinned ID, enrich url/price
+                    found[iso][1] = found[iso][1] or ev.get("url", "")
+                    found[iso][2] = low
+                else:
+                    found[iso] = [str(ev.get("id", "")), ev.get("url", ""), low]
         except Exception as exc:  # noqa: BLE001
             print(f"[ticketmaster] discovery lookup failed: {exc}")
 
-        return [v for v in found.values() if v[1]]
+        return [(target_dates[iso], v[0], v[1], v[2]) for iso, v in found.items() if v[0]]
 
     # -- stage 2: seat-map facets --------------------------------------------
     def _fetch_facets(self, event_id: str, config, ev_date, ev_url) -> List[Listing]:
@@ -133,7 +160,18 @@ class TicketmasterProvider(TicketProvider):
             "resaleChannelId": "internal.ecommerce.consumer.desktop.web.browser.ticketmaster.us",
         }
         url = FACETS_URL.format(event_id=event_id)
-        resp = self.http.get(url, params=params, timeout=30)
+        # The seat-map endpoint serves ticketmaster.com's own web app and
+        # rejects obvious non-browser clients, so present browser-equivalent
+        # headers for this request only.
+        headers = {
+            "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://www.ticketmaster.com",
+            "Referer": "https://www.ticketmaster.com/",
+        }
+        resp = self.http.get(url, params=params, headers=headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 

@@ -206,6 +206,8 @@ function watchCard(w){
       <div class="row" style="align-items:center">
         <label class="check"><input type="checkbox" data-f="require_contiguous" ${w.require_contiguous?'checked':''}/> Contiguous</label>
         <label class="check"><input type="checkbox" data-f="exclude_obstructed" ${w.exclude_obstructed?'checked':''}/> No obstructed</label>
+        <label class="check" title="If seat-level data is unavailable, still alert when the event's official lowest listed price is under your target">
+          <input type="checkbox" data-f="price_range_fallback" ${w.price_range_fallback!==false?'checked':''}/> Price fallback</label>
       </div>
     </div>
     <div class="row" style="margin-top:12px">
