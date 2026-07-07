@@ -21,6 +21,7 @@ class Secrets:
     textbelt_key: str = ""
     alert_phone: str = ""
     seatgeek_client_id: str = ""
+    seatgeek_client_secret: str = ""
     ticketmaster_api_key: str = ""
     stubhub_token: str = ""
 
@@ -30,6 +31,7 @@ class Secrets:
             textbelt_key=os.getenv("TEXTBELT_KEY", ""),
             alert_phone=os.getenv("ALERT_PHONE", ""),
             seatgeek_client_id=os.getenv("SEATGEEK_CLIENT_ID", ""),
+            seatgeek_client_secret=os.getenv("SEATGEEK_CLIENT_SECRET", ""),
             ticketmaster_api_key=os.getenv("TICKETMASTER_API_KEY", ""),
             stubhub_token=os.getenv("STUBHUB_TOKEN", ""),
         )

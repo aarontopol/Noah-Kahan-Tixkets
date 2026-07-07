@@ -22,8 +22,9 @@ EVENTS_URL = "https://api.seatgeek.com/2/events"
 class SeatGeekProvider(TicketProvider):
     name = "seatgeek"
 
-    def __init__(self, client_id: str):
+    def __init__(self, client_id: str, client_secret: str = ""):
         self.client_id = client_id
+        self.client_secret = client_secret
         self.http = session()
 
     def is_configured(self) -> bool:
@@ -36,8 +37,23 @@ class SeatGeekProvider(TicketProvider):
             "venue.city": config.city,
             "per_page": 50,
         }
-        resp = self.http.get(EVENTS_URL, params=params, timeout=30)
-        resp.raise_for_status()
+        # Newer SeatGeek apps are rejected (403) unless the client_secret is
+        # sent too; include it whenever it's configured.
+        if self.client_secret:
+            params["client_secret"] = self.client_secret
+        # Their WAF also dislikes obviously-scripted user agents.
+        headers = {"User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")}
+        try:
+            resp = self.http.get(EVENTS_URL, params=params, headers=headers, timeout=30)
+            resp.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            hint = ""
+            if "403" in str(exc):
+                hint = (" — SeatGeek returns 403 for unapproved apps or when the "
+                        "client_secret is missing; add SEATGEEK_CLIENT_SECRET "
+                        "(from seatgeek.com/account/develop) and check the app's status")
+            raise RuntimeError(f"{exc}{hint}") from exc
         events = resp.json().get("events", [])
 
         target_dates = set(config.dates)

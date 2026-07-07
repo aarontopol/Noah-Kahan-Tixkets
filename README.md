@@ -92,7 +92,8 @@ credentials as encrypted secrets.
    | `TEXTBELT_KEY` | ✅ yes | https://textbelt.com (buy credits; or `textbelt_test` to trial) |
    | `ALERT_PHONE` | ✅ yes | your mobile, e.g. `+14044443292` |
    | `TICKETMASTER_API_KEY` | recommended | free at https://developer.ticketmaster.com |
-   | `SEATGEEK_CLIENT_ID` | optional | free at https://platform.seatgeek.com |
+   | `SEATGEEK_CLIENT_ID` | optional | free at https://seatgeek.com/account/develop |
+   | `SEATGEEK_CLIENT_SECRET` | with SeatGeek | same page — newer SeatGeek apps 403 without it |
    | `STUBHUB_TOKEN` | optional | https://developer.stubhub.com (partner approval) |
    | `TM_WEB_CONSUMER_KEY` | optional | only if the seat-map stage reports it's blocked — copy the `apikey` ticketmaster.com sends in its own seat-map request (browser dev tools → Network tab) |
 
