@@ -6,9 +6,18 @@ an API key. Set TEXTBELT_KEY and ALERT_PHONE in the environment. Use the key
 """
 from __future__ import annotations
 
+import re
 from typing import List
 
 import requests
+
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def strip_urls(message: str) -> str:
+    """Remove links (TextBelt blocks URLs for unverified accounts)."""
+    stripped = _URL_RE.sub("", message)
+    return "\n".join(line.rstrip() for line in stripped.splitlines() if line.strip())
 
 from .models import Listing
 
@@ -66,12 +75,28 @@ class TextBeltNotifier:
         return bool(self.api_key and self.phone) and not self.dry_run
 
     def send(self, message: str) -> bool:
-        """Send an SMS. Returns True on success (or in dry-run)."""
+        """Send an SMS. Returns True on success (or in dry-run).
+
+        Unverified TextBelt accounts can't send messages containing URLs; if
+        that's why the send was rejected, retry once with the links stripped —
+        an alert without a link still beats no alert.
+        """
         if not message:
             return False
         if self.dry_run or not self.api_key or not self.phone:
             print("[dry-run] would text %s:\n%s" % (self.phone or "<no phone>", message))
             return True
+        if self._post(message):
+            return True
+        without_links = strip_urls(message)
+        if self._last_error_was_url_block and without_links != message:
+            print("[notifier] retrying without links (account not verified for URLs — "
+                  "visit https://textbelt.com/whitelist to verify)")
+            return self._post(without_links)
+        return False
+
+    def _post(self, message: str) -> bool:
+        self._last_error_was_url_block = False
         try:
             resp = requests.post(
                 TEXTBELT_URL,
@@ -83,7 +108,9 @@ class TextBeltNotifier:
             print(f"[notifier] send failed: {exc}")
             return False
         if not payload.get("success"):
-            print(f"[notifier] TextBelt error: {payload.get('error', payload)}")
+            error = str(payload.get("error", payload))
+            print(f"[notifier] TextBelt error: {error}")
+            self._last_error_was_url_block = "URL" in error
             return False
         remaining = payload.get("quotaRemaining")
         print(f"[notifier] sent to {self.phone} (quota remaining: {remaining})")
