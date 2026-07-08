@@ -1,11 +1,15 @@
 """SeatGeek provider.
 
-Uses SeatGeek's official Platform API (https://platform.seatgeek.com). A free
-`client_id` (SEATGEEK_CLIENT_ID) unlocks event discovery and event-level price
-stats. Per-seat listing data (section/row/quantity) is only returned to
-approved partner accounts; when it is present in the response we parse it into
-seat-level listings, otherwise we log the event's lowest price for visibility
-and return nothing (so we never fire a false alert on a section-less price).
+Three data tiers, best available wins:
+
+1. Partner listings from the official Platform API (approved accounts only).
+2. The seat-map endpoint seatgeek.com's own website uses — unofficial but
+   returns true seat-level listings (section, row, quantity, price) that the
+   public API withholds. Parsed defensively since its schema can drift.
+3. The official event stats' lowest listed price, surfaced as a clearly
+   labeled price-level result.
+
+Requires SEATGEEK_CLIENT_ID (+ SEATGEEK_CLIENT_SECRET for newer apps).
 """
 from __future__ import annotations
 
@@ -17,6 +21,18 @@ from .base import TicketProvider
 from .http import session
 
 EVENTS_URL = "https://api.seatgeek.com/2/events"
+# The endpoint seatgeek.com's own interactive seat map is served by. Unofficial
+# (schema may drift), but it exposes true seat-level listings — section, row,
+# quantity, price — that the Platform API withholds from non-partner keys.
+CONSUMER_LISTINGS_URL = "https://seatgeek.com/api/event_listings_v2"
+
+BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://seatgeek.com/",
+}
 
 
 class SeatGeekProvider(TicketProvider):
@@ -71,29 +87,60 @@ class SeatGeekProvider(TicketProvider):
             if raw_listings:
                 for row in raw_listings:
                     listings.append(_listing_from_row(row, ev_id, config.artist, ev_date, venue, ev_url))
-            else:
-                low = (ev.get("stats") or {}).get("lowest_price")
-                print(f"[seatgeek] {ev_date} lowest listed price=${low} "
-                      f"(event-level only; no seat detail on this key)")
-                # Public keys don't get per-seat listings, but the lowest listed
-                # price is still an official, useful signal — surface it as a
-                # clearly-labeled price-level result (see monitor/filters.py).
-                if low is not None:
-                    listings.append(Listing(
-                        source="seatgeek",
-                        event_id=ev_id,
-                        event_name=config.artist,
-                        event_date=ev_date,
-                        venue=venue,
-                        section="",
-                        quantity=0,
-                        price_per_ticket=float(low),
-                        notes="lowest listed price on SeatGeek (any section)",
-                        url=ev_url,
-                        listing_id=f"{ev_id}:price-range",
-                        is_price_level=True,
-                    ))
+                continue
+
+            stats = ev.get("stats") or {}
+            print(f"[seatgeek] {ev_date} stats: {stats}")
+
+            # Best shot first: the seat map's own endpoint (real seat-level data).
+            seat_listings: List[Listing] = []
+            try:
+                seat_listings = self._fetch_consumer_listings(
+                    ev_id, config.artist, ev_date, venue, ev_url)
+                print(f"[seatgeek] {ev_date}: {len(seat_listings)} seat-level "
+                      f"listing(s) via seat-map endpoint")
+            except Exception as exc:  # noqa: BLE001 - unofficial endpoint, best-effort
+                print(f"[seatgeek] seat-map endpoint unavailable for {ev_id}: {exc}")
+            if seat_listings:
+                listings.extend(seat_listings)
+                continue
+
+            # Fallback: the official stats' lowest listed price, surfaced as a
+            # clearly-labeled price-level result (see monitor/filters.py).
+            low = _lowest_from_stats(stats)
+            if low is not None:
+                listings.append(Listing(
+                    source="seatgeek",
+                    event_id=ev_id,
+                    event_name=config.artist,
+                    event_date=ev_date,
+                    venue=venue,
+                    section="",
+                    quantity=0,
+                    price_per_ticket=low,
+                    notes="lowest listed price on SeatGeek (any section)",
+                    url=ev_url,
+                    listing_id=f"{ev_id}:price-range",
+                    is_price_level=True,
+                ))
         return listings
+
+    def _fetch_consumer_listings(self, ev_id, artist, ev_date, venue, ev_url) -> List[Listing]:
+        resp = self.http.get(CONSUMER_LISTINGS_URL,
+                             params={"id": ev_id, "client_id": self.client_id},
+                             headers=BROWSER_HEADERS, timeout=30)
+        resp.raise_for_status()
+        raw = resp.json().get("listings") or []
+        out = []
+        for row in raw:
+            lst = _listing_from_consumer_row(row, ev_id, artist, ev_date, venue, ev_url)
+            if lst is not None:
+                out.append(lst)
+        if raw and not out:
+            # Schema drifted — log the shape so the next fix is a one-liner.
+            print(f"[seatgeek] could not parse seat-map listings; "
+                  f"sample keys: {sorted(raw[0])[:20]}")
+        return out
 
 
 def _listing_from_row(row, ev_id, artist, ev_date, venue, ev_url) -> Listing:
@@ -113,6 +160,74 @@ def _listing_from_row(row, ev_id, artist, ev_date, venue, ev_url) -> Listing:
         notes=row.get("notes", "") or row.get("deal_description", ""),
         url=row.get("url", ev_url),
         listing_id=str(row.get("id", "")),
+    )
+
+
+def _lowest_from_stats(stats: dict):
+    """Lowest price across the several stat fields SeatGeek may populate."""
+    values = []
+    for key in ("lowest_price", "lowest_sg_base_price", "lowest_price_good_deals"):
+        try:
+            v = stats.get(key)
+            if v is not None:
+                values.append(float(v))
+        except (TypeError, ValueError):
+            continue
+    return min(values) if values else None
+
+
+def _first(row: dict, *keys):
+    """First non-empty value among candidate key spellings."""
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, "", []):
+            return value
+    return None
+
+
+def _listing_from_consumer_row(row, ev_id, artist, ev_date, venue, ev_url):
+    """Parse one seat-map listing. The endpoint uses compact keys ("s", "r",
+    "q", "p"…) that occasionally change; try known spellings and skip rows we
+    can't understand rather than guessing."""
+    section = _first(row, "s", "section", "sec")
+    price = _first(row, "pf", "p", "price", "display_price", "dp")
+    if section is None or price is None:
+        return None
+    try:
+        price = float(price)
+    except (TypeError, ValueError):
+        return None
+
+    row_label = _first(row, "r", "row")
+    qty_raw = _first(row, "q", "quantity", "qty")
+    splits_raw = _first(row, "sq", "splits") or []
+    if isinstance(qty_raw, list):  # some variants put the split list in "q"
+        splits_raw = splits_raw or qty_raw
+        qty_raw = max(qty_raw) if qty_raw else 0
+    try:
+        quantity = int(qty_raw or 0)
+    except (TypeError, ValueError):
+        quantity = 0
+    splits = [int(x) for x in splits_raw if str(x).isdigit()] if isinstance(splits_raw, list) else []
+
+    flags = row.get("f") if isinstance(row.get("f"), list) else []
+    flag_text = " ".join(str(f) for f in flags)
+
+    return Listing(
+        source="seatgeek",
+        event_id=ev_id,
+        event_name=artist,
+        event_date=ev_date,
+        venue=venue,
+        section=str(section),
+        row=str(row_label) if row_label is not None else None,
+        quantity=quantity,
+        price_per_ticket=price,
+        split_options=splits,
+        is_obstructed="obstructed" in flag_text.lower(),
+        notes=flag_text,
+        url=str(_first(row, "url") or ev_url),
+        listing_id=str(_first(row, "id", "listing_id") or f"{ev_id}:{section}|{row_label}"),
     )
 
 

@@ -136,6 +136,51 @@ def test_seatgeek_emits_price_level_from_stats():
     assert lst.source == "seatgeek" and lst.listing_id == "42:price-range"
 
 
+def test_seatgeek_seat_map_listings_preferred_over_price_level():
+    provider = SeatGeekProvider("client-id")
+    provider.http = FakeHttp([
+        ("api.seatgeek.com", FakeResponse({"events": [
+            {"id": 42, "url": "https://sg/42",
+             "datetime_local": "2026-08-09T18:30:00",
+             "venue": {"name": "Coors Field"},
+             "stats": {"lowest_price": 302}},
+        ]})),
+        # the seat-map endpoint answers with compact-key listings
+        ("seatgeek.com/api/event_listings_v2", FakeResponse({"listings": [
+            {"id": "L1", "s": "121", "r": "12", "q": 6, "sq": [2, 4, 6], "pf": 640.0},
+            {"id": "L2", "s": "343", "r": "3", "q": 2, "sq": [2], "p": 302.0},
+            {"junk": True},  # unparseable rows are skipped, not fatal
+        ]})),
+    ])
+
+    listings = provider.fetch(config())
+
+    assert len(listings) == 2  # seat-level rows win; no price-level fallback emitted
+    by_id = {l.listing_id: l for l in listings}
+    l1 = by_id["L1"]
+    assert (l1.section, l1.row, l1.quantity, l1.price_per_ticket) == ("121", "12", 6, 640.0)
+    assert l1.split_options == [2, 4, 6]
+    assert not any(l.is_price_level for l in listings)
+
+
+def test_seatgeek_consumer_row_verbose_keys():
+    from datetime import date as d
+    from monitor.providers.seatgeek import _listing_from_consumer_row
+    row = {"section": "128", "row": "9", "quantity": 4, "splits": [2, 4],
+           "price": "355.5", "f": ["obstructed view"]}
+    lst = _listing_from_consumer_row(row, "42", "NK", d(2026, 8, 8), "Coors Field", "https://sg")
+    assert (lst.section, lst.row, lst.quantity) == ("128", "9", 4)
+    assert lst.price_per_ticket == 355.5
+    assert lst.is_obstructed is True
+
+
+def test_lowest_from_stats_uses_alternate_fields():
+    from monitor.providers.seatgeek import _lowest_from_stats
+    assert _lowest_from_stats({"lowest_price": None, "lowest_sg_base_price": 302}) == 302.0
+    assert _lowest_from_stats({"lowest_price": 350, "lowest_sg_base_price": 302}) == 302.0
+    assert _lowest_from_stats({"lowest_price": None}) is None
+
+
 def test_seatgeek_no_price_no_listing():
     provider = SeatGeekProvider("client-id")
     provider.http = FakeHttp([
