@@ -22,10 +22,11 @@
       "enabled": true,
       "id": "noahkahan",
       "created_at": "2026-07-07T00:00:00+00:00",
-      "last_checked": "2026-07-07T12:16:49+00:00",
-      "last_match_count": 0,
+      "last_checked": "2026-07-08T12:22:44+00:00",
+      "last_match_count": 3,
       "last_error": "",
       "last_sources": {
+        "mock": 7,
         "seatgeek": 0,
         "ticketmaster": 0
       }
