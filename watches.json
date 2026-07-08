@@ -33,7 +33,7 @@
     }
   ],
   "providers": {
-    "mock": true,
+    "mock": false,
     "seatgeek": true,
     "ticketmaster": true,
     "stubhub": false
