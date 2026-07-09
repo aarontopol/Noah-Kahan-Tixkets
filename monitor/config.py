@@ -49,6 +49,8 @@ class Config:
     poll_interval_minutes: int
     max_matches_in_text: int
     secrets: Secrets = field(default_factory=Secrets.from_env)
+    # event-page URLs by ISO date for the browser-capture provider
+    seatgeek_page_urls: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: str = "config.yaml") -> "Config":

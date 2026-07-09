@@ -20,7 +20,7 @@ DEFAULT_RUNTIME = {"poll_interval_minutes": 15, "max_matches_in_text": 6}
 
 # Fields the UI is allowed to update on an existing watch.
 EDITABLE_FIELDS = {
-    "artist", "venue", "city", "dates", "ticketmaster_event_ids",
+    "artist", "venue", "city", "dates", "ticketmaster_event_ids", "seatgeek_page_urls",
     "section_min", "section_max", "min_quantity", "max_price_per_ticket",
     "require_contiguous", "exclude_obstructed", "price_range_fallback", "enabled",
 }
@@ -46,6 +46,9 @@ class Watch:
     city: str = ""
     dates: List[str] = field(default_factory=list)            # ISO "YYYY-MM-DD"
     ticketmaster_event_ids: Dict[str, str] = field(default_factory=dict)
+    # Event-page URLs for the browser-capture provider (home runs), keyed by
+    # ISO date — paste the SeatGeek event page address from your browser.
+    seatgeek_page_urls: Dict[str, str] = field(default_factory=dict)
     section_min: int = 120
     section_max: int = 141
     min_quantity: int = 4
