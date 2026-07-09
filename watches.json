@@ -40,7 +40,7 @@
     "seatgeek": true,
     "ticketmaster": true,
     "stubhub": false,
-    "browser": true
+    "browser": false
   },
   "runtime": {
     "poll_interval_minutes": 15,
