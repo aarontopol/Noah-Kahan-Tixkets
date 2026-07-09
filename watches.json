@@ -19,7 +19,7 @@
       "section_min": 120,
       "section_max": 141,
       "min_quantity": 4,
-      "max_price_per_ticket": 500.0,
+      "max_price_per_ticket": 400.0,
       "require_contiguous": true,
       "exclude_obstructed": true,
       "price_range_fallback": true,
