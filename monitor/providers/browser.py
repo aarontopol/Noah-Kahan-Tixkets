@@ -147,9 +147,10 @@ class BrowserProvider(TicketProvider):
                     break
                 page.wait_for_timeout(800)
             page.wait_for_timeout(self.settle_ms)
-            challenge = self._challenge_text(page)
+            probe = self._probe_page(page)
         finally:
             page.close()
+        challenge = probe.get("challenge", "")
 
         ev_id = _event_id_from_url(url)
         rows = []
@@ -181,20 +182,19 @@ class BrowserProvider(TicketProvider):
                 if path not in seen:
                     seen.append(path)
             print(f"[browser] {ev_date}: no listings JSON captured; JSON endpoints "
-                  f"seen: {seen[:8] or 'none'}")
+                  f"seen: {seen[:8] or 'none'}; page title={probe.get('title', '')!r}; "
+                  f"page text starts: {probe.get('snippet', '')[:160]!r}")
         return out
 
     @staticmethod
-    def _challenge_text(page):
-        """Return the matching challenge phrase if the page looks like a bot wall."""
+    def _probe_page(page) -> dict:
+        """Grab the page's title/text and flag known bot-wall phrasing."""
         try:
             title = page.title() or ""
             snippet = page.evaluate(
                 "document.body ? document.body.innerText.slice(0, 600) : ''") or ""
         except Exception:  # noqa: BLE001
-            return ""
+            return {"title": "", "snippet": "", "challenge": ""}
         haystack = f"{title} {snippet}".lower()
-        for marker in CHALLENGE_MARKERS:
-            if marker in haystack:
-                return marker
-        return ""
+        challenge = next((m for m in CHALLENGE_MARKERS if m in haystack), "")
+        return {"title": title, "snippet": snippet, "challenge": challenge}
