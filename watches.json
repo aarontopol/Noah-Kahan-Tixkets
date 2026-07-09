@@ -12,6 +12,10 @@
         "2026-08-08": "1E00643B33EFC5AD",
         "2026-08-09": "1E0064497CB928E0"
       },
+      "seatgeek_page_urls": {
+        "2026-08-08": "",
+        "2026-08-09": ""
+      },
       "section_min": 120,
       "section_max": 141,
       "min_quantity": 4,
@@ -35,7 +39,8 @@
     "mock": false,
     "seatgeek": true,
     "ticketmaster": true,
-    "stubhub": false
+    "stubhub": false,
+    "browser": true
   },
   "runtime": {
     "poll_interval_minutes": 15,

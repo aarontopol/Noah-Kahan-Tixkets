@@ -216,6 +216,22 @@ also try setting a `TM_WEB_CONSUMER_KEY` secret (copy the `apikey` from
 ticketmaster.com's own seat-map request in your browser's network tab) to
 restore full per-section data.
 
+**Home-computer superpower — browser capture:** ticket sites' seat-map
+endpoints reject scripts outright (bot detection), but they happily serve a
+real browser. On the machine that runs the monitor:
+
+```bash
+pip install playwright
+playwright install chromium
+```
+
+then paste each event's SeatGeek page URL into the watch's
+`seatgeek_page_urls` (keyed by date) in `watches.json`. The monitor then opens
+the page in headless Chromium each cycle and captures the same seat-level
+listings (section, row, quantity, price) the website shows — enabling true
+"N seats together in sections X–Y" alerts. Cloud runs skip this provider
+automatically (Playwright isn't installed there).
+
 Each event card in the web UI shows **per-source health** after every check
 (e.g. `ticketmaster: 14 listings · seatgeek: 0 listings`) so you can see at a
 glance whether a source is actually returning data or erroring.

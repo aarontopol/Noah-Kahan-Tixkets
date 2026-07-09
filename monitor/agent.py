@@ -127,6 +127,7 @@ def _config_for_watch(watch: Watch, store: WatchStore, secrets: Secrets) -> Conf
         poll_interval_minutes=int(store.runtime.get("poll_interval_minutes", 15)),
         max_matches_in_text=int(store.runtime.get("max_matches_in_text", 6)),
         secrets=secrets,
+        seatgeek_page_urls=dict(watch.seatgeek_page_urls or {}),
     )
 
 
