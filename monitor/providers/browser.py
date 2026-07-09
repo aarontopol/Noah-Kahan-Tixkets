@@ -3,41 +3,45 @@
 Ticket sites' seat-map data endpoints reject plain HTTP clients — bot
 detection looks at far more than the IP address. This provider sidesteps that
 legitimately by *being* a real browser: it opens each event's public SeatGeek
-page in headless Chromium (Playwright) and captures the seat-listing JSON the
-page itself downloads, then parses it with the same tolerant parser the
-seatgeek provider uses. Section, row, quantity, splits, and price all come
-through — enough for true "N seats together in sections X–Y" matching.
+page in Chromium (Playwright) and captures the seat-listing JSON the page
+itself downloads, then parses it with the same tolerant parser the seatgeek
+provider uses. Section, row, quantity, splits, and price all come through —
+enough for true "N seats together in sections X–Y" matching.
 
 Setup (once, on the machine that runs the monitor):
 
     pip install playwright
-    playwright install chromium
+    python -m playwright install chromium
 
-Then give each watch the event-page URL(s) to read, keyed by date, e.g. in
-watches.json:
+Then give each watch the event-page URL(s) to read, keyed by date
+(watches.json -> "seatgeek_page_urls"). Just copy the address bar from the
+event page in your own browser.
 
-    "seatgeek_page_urls": {
-      "2026-08-08": "https://seatgeek.com/noah-kahan-...-tickets/.../18046704",
-      "2026-08-09": "https://seatgeek.com/noah-kahan-...-tickets/.../18066156"
-    }
+If the site shows a human-verification challenge to the invisible browser,
+run with a visible one instead (often passes):
 
-(Just copy the address bar from the event page in your own browser.)
+    PowerShell:  $env:BROWSER_HEADED="1"; python start_monitor.py
+    Mac/Linux:   BROWSER_HEADED=1 python3 start_monitor.py
 
 The provider reports itself as not-configured when Playwright isn't installed
 (e.g. in GitHub Actions), so cloud runs skip it cleanly.
 """
 from __future__ import annotations
 
-import json
+import os
 import re
 from datetime import datetime
 from typing import List
+from urllib.parse import urlsplit
 
 from .base import TicketProvider
 from .seatgeek import _listing_from_consumer_row
 
-# Substrings identifying the XHR responses that carry seat listings.
-LISTING_ENDPOINT_MARKERS = ("event_listings",)
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+
+CHALLENGE_MARKERS = ("press & hold", "access to this page has been denied",
+                     "are you a human", "verify you are", "unusual activity")
 
 _EVENT_ID_RE = re.compile(r"/(\d{6,})(?:[/?#]|$)")
 
@@ -65,7 +69,7 @@ def _to_date(value: str):
 class BrowserProvider(TicketProvider):
     name = "browser"
 
-    def __init__(self, page_load_timeout_ms: int = 45000, settle_ms: int = 8000):
+    def __init__(self, page_load_timeout_ms: int = 45000, settle_ms: int = 12000):
         self.page_load_timeout_ms = page_load_timeout_ms
         self.settle_ms = settle_ms
 
@@ -87,12 +91,17 @@ class BrowserProvider(TicketProvider):
 
         from playwright.sync_api import sync_playwright
 
+        headed = os.getenv("BROWSER_HEADED", "").strip().lower() in ("1", "true", "yes")
         listings: List = []
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(
+                headless=not headed,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
             context = browser.new_context(
-                viewport={"width": 1280, "height": 900},
+                viewport={"width": 1366, "height": 900},
                 locale="en-US",
+                user_agent=USER_AGENT,  # Playwright's default UA says "Headless"
             )
             try:
                 for ev_date, url in targets:
@@ -106,20 +115,39 @@ class BrowserProvider(TicketProvider):
 
     def _capture_event(self, context, url: str, ev_date, config) -> List:
         payloads: List[dict] = []
+        json_urls: List[str] = []
         page = context.new_page()
 
         def on_response(response):
-            if any(marker in response.url for marker in LISTING_ENDPOINT_MARKERS):
-                try:
-                    payloads.append(response.json())
-                except Exception:  # noqa: BLE001 - non-JSON body, ignore
-                    pass
+            try:
+                content_type = response.headers.get("content-type", "")
+            except Exception:  # noqa: BLE001
+                return
+            if "json" not in content_type:
+                return
+            json_urls.append(response.url)
+            try:
+                body = response.json()
+            except Exception:  # noqa: BLE001 - not actually JSON / stream gone
+                return
+            # Schema-agnostic: any JSON response carrying a "listings" array is
+            # treated as seat-listing data, whatever the endpoint is named.
+            if isinstance(body, dict) and isinstance(body.get("listings"), list):
+                payloads.append(body)
 
         page.on("response", on_response)
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=self.page_load_timeout_ms)
-            # Give the seat map time to fetch its listings.
+            page.wait_for_timeout(2500)
+            # Nudge lazy-loaded seat maps into fetching.
+            for _ in range(3):
+                try:
+                    page.mouse.wheel(0, 900)
+                except Exception:  # noqa: BLE001
+                    break
+                page.wait_for_timeout(800)
             page.wait_for_timeout(self.settle_ms)
+            challenge = self._challenge_text(page)
         finally:
             page.close()
 
@@ -134,19 +162,39 @@ class BrowserProvider(TicketProvider):
             if lst is not None:
                 lst.source = "browser"
                 out.append(lst)
-        if rows and not out:
-            print(f"[browser] {ev_date}: captured {len(rows)} listing rows but could "
-                  f"not parse them; sample keys: {sorted(rows[0])[:20]}")
-        elif not payloads:
-            print(f"[browser] {ev_date}: page loaded but no listings response was "
-                  f"captured (URL right? seat map may need scrolling into view)")
-        else:
+
+        if out:
             print(f"[browser] {ev_date}: captured {len(out)} seat-level listing(s) "
                   f"from the live page")
+        elif rows:
+            print(f"[browser] {ev_date}: captured {len(rows)} listing rows but could "
+                  f"not parse them; sample keys: {sorted(rows[0])[:20]}")
+        elif challenge:
+            print(f"[browser] {ev_date}: the site showed a human-verification "
+                  f"challenge ({challenge!r}). Try a visible browser: set "
+                  f"BROWSER_HEADED=1 and run again")
+        else:
+            seen = []
+            for u in json_urls:
+                s = urlsplit(u)
+                path = s.netloc + s.path
+                if path not in seen:
+                    seen.append(path)
+            print(f"[browser] {ev_date}: no listings JSON captured; JSON endpoints "
+                  f"seen: {seen[:8] or 'none'}")
         return out
 
-
-def _debug_dump(payloads, path="browser_capture_debug.json"):  # pragma: no cover
-    """Handy while diagnosing schema drift on a home machine."""
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(payloads, fh, indent=2)
+    @staticmethod
+    def _challenge_text(page):
+        """Return the matching challenge phrase if the page looks like a bot wall."""
+        try:
+            title = page.title() or ""
+            snippet = page.evaluate(
+                "document.body ? document.body.innerText.slice(0, 600) : ''") or ""
+        except Exception:  # noqa: BLE001
+            return ""
+        haystack = f"{title} {snippet}".lower()
+        for marker in CHALLENGE_MARKERS:
+            if marker in haystack:
+                return marker
+        return ""
